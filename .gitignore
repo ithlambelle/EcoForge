@@ -1,0 +1,26 @@
+# Chrome Extension
+*.crx
+*.pem
+.DS_Store
+
+# Node modules (if using build tools)
+node_modules/
+package-lock.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.local
+
+# Build outputs
+dist/
+build/
+

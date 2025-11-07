@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Waterer Icons</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #667eea;
+    }
+    .icon-preview {
+      display: inline-block;
+      margin: 20px;
+      text-align: center;
+    }
+    canvas {
+      border: 1px solid #ddd;
+      margin: 10px;
+    }
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 5px;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>💧 Waterer Icon Generator</h1>
+    <p>This tool generates placeholder icons for the Waterer Chrome extension.</p>
+    
+    <div class="icon-preview">
+      <h3>16x16</h3>
+      <canvas id="icon16" width="16" height="16"></canvas>
+      <br>
+      <button onclick="downloadIcon(16)">Download icon16.png</button>
+    </div>
+    
+    <div class="icon-preview">
+      <h3>48x48</h3>
+      <canvas id="icon48" width="48" height="48"></canvas>
+      <br>
+      <button onclick="downloadIcon(48)">Download icon48.png</button>
+    </div>
+    
+    <div class="icon-preview">
+      <h3>128x128</h3>
+      <canvas id="icon128" width="128" height="128"></canvas>
+      <br>
+      <button onclick="downloadIcon(128)">Download icon128.png</button>
+    </div>
+    
+    <p style="margin-top: 30px; color: #666;">
+      <strong>Note:</strong> These are simple placeholder icons. For production, 
+      create professional icons using design tools like Figma, Photoshop, or online icon generators.
+      The icons should represent water/water bottle theme with purple gradient (#667eea to #764ba2).
+    </p>
+  </div>
+
+  <script>
+    function drawIcon(canvas, size) {
+      const ctx = canvas.getContext('2d');
+      
+      // create gradient background
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#667eea');
+      gradient.addColorStop(1, '#764ba2');
+      
+      // fill background
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, size, size);
+      
+      // draw water drop/bottle icon
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.beginPath();
+      
+      // simple water drop shape
+      const centerX = size / 2;
+      const centerY = size / 2;
+      const radius = size * 0.3;
+      
+      ctx.arc(centerX, centerY - radius * 0.3, radius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // add "W" text for Waterer
+      ctx.fillStyle = '#667eea';
+      ctx.font = `bold ${size * 0.4}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('W', centerX, centerY);
+    }
+    
+    function downloadIcon(size) {
+      const canvas = document.getElementById(`icon${size}`);
+      canvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `icon${size}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    }
+    
+    // draw icons on load
+    window.addEventListener('load', () => {
+      drawIcon(document.getElementById('icon16'), 16);
+      drawIcon(document.getElementById('icon48'), 48);
+      drawIcon(document.getElementById('icon128'), 128);
+    });
+  </script>
+</body>
+</html>
+

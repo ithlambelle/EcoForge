@@ -1,0 +1,22 @@
+{
+  "name": "waterer",
+  "version": "1.0.0",
+  "description": "Chrome extension to track water usage from AI model queries",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:Jaja-626/EcoForge.git"
+  },
+  "keywords": [
+    "chrome-extension",
+    "water-usage",
+    "ai",
+    "sustainability",
+    "environment"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+

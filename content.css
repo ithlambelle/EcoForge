@@ -1,0 +1,226 @@
+/* content.css - styles for injected UI elements */
+
+.waterer-container {
+  position: fixed;
+  z-index: 999999;
+  pointer-events: auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+.waterer-square {
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  cursor: move;
+  transition: transform 0.3s, box-shadow 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+
+.waterer-square:hover {
+  transform: translateY(-5px) scale(1.05);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+}
+
+.waterer-square:active {
+  transform: translateY(-2px) scale(0.98);
+}
+
+.waterer-square .query-count {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.waterer-square .water-usage {
+  font-size: 11px;
+  opacity: 0.9;
+  margin-top: 4px;
+}
+
+.waterer-square .close-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.3);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.waterer-square:hover .close-btn {
+  opacity: 1;
+}
+
+.waterer-square .close-btn:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.water-bottle-container {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 999998;
+  pointer-events: auto;
+}
+
+.water-bottle {
+  width: 60px;
+  height: 120px;
+  background: #e3f2fd;
+  border: 3px solid #2196f3;
+  border-radius: 8px 8px 4px 4px;
+  position: relative;
+  overflow: hidden;
+  cursor: move;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transition: transform 0.3s;
+}
+
+.water-bottle.gallon {
+  width: 80px;
+  height: 160px;
+}
+
+.water-bottle:hover {
+  transform: scale(1.05);
+}
+
+.water-bottle .water-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, #2196f3, #64b5f6);
+  transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 0 0 4px 4px;
+}
+
+.water-bottle .water-fill.wave {
+  animation: wave 2s ease-in-out infinite;
+}
+
+@keyframes wave {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+.water-bottle .bottle-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  font-weight: 600;
+  color: #1976d2;
+  z-index: 1;
+  text-align: center;
+}
+
+.water-bottle .close-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  background: #2196f3;
+  border: 2px solid white;
+  border-radius: 50%;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s, background 0.3s;
+  z-index: 10;
+}
+
+.water-bottle .close-btn:hover {
+  background: #1976d2;
+}
+
+.water-bottle-container:hover .close-btn {
+  opacity: 1;
+}
+
+.waterer-message {
+  position: fixed;
+  bottom: 160px;
+  left: 20px;
+  z-index: 999997;
+  background: white;
+  padding: 12px 16px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  max-width: 300px;
+  font-size: 14px;
+  line-height: 1.4;
+  animation: slideUp 0.3s ease-out, fadeOut 0.3s ease-in 4.7s;
+  pointer-events: none;
+}
+
+.waterer-message.positive {
+  border-left: 4px solid #4caf50;
+}
+
+.waterer-message.negative {
+  border-left: 4px solid #f44336;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.waterer-square.appear {
+  animation: appearUp 0.5s ease-out;
+}
+
+@keyframes appearUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
