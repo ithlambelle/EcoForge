@@ -1,5 +1,13 @@
 // popup.js - handles popup UI and survey
 
+// submission guard and commit token to prevent race conditions
+let __isSubmitting = false;
+let __lastCommitId = null;
+
+function genId() {
+  return (crypto?.randomUUID?.() || String(Date.now()) + Math.random());
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   const surveyContainer = document.getElementById('survey-container');
   const dashboardContainer = document.getElementById('dashboard-container');
@@ -146,9 +154,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // function to check state and update UI accordingly
   async function checkStateAndUpdateUI() {
-    // Don't run if survey was just completed (prevent race condition)
-    if (window.dropQuerySurveyJustCompleted) {
-      console.log('💧 DropQuery: Skipping state check - survey just completed');
+    // Don't run if we're in the middle of submitting (prevent race condition)
+    if (__isSubmitting) {
+      console.log('💧 DropQuery: Skipping state check - submission in progress');
       return;
     }
     
@@ -191,7 +199,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   surveyForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    console.log('💧 DropQuery: Survey form submitted');
+    // Prevent double submission
+    if (__isSubmitting) {
+      console.log('💧 DropQuery: Submission already in progress, ignoring');
+      return;
+    }
+    
+    __isSubmitting = true;
+    __lastCommitId = genId();
+    
+    console.log('💧 DropQuery: Survey form submitted', { commitId: __lastCommitId });
     
     // disable form to prevent double submission
     surveyForm.style.pointerEvents = 'none';
@@ -230,80 +247,60 @@ document.addEventListener('DOMContentLoaded', async () => {
       createdAt: new Date().toISOString()
     };
     
-    // ensure isResetting flag is cleared when completing survey
-    // save all data in one atomic operation
-    await chrome.storage.local.set({
+    // Atomically write everything needed in ONE set() operation
+    const payload = {
       surveyCompleted: true,
       userData: userData,
       dailyUsage: surveyWaterUsage,
       weeklyUsage: surveyWaterUsage,
       totalUsage: surveyWaterUsage,
-      isResetting: false, // clear reset flag if it was set
-      queries: [] // ensure queries array exists
-    });
+      isResetting: false, // ensure old reset state can't interfere
+      queries: [], // ensure queries array exists
+      surveyCommitId: __lastCommitId, // commit token for verification
+      surveyCommittedAt: Date.now() // timestamp to help debug
+    };
     
-    console.log('💧 DropQuery: Storage saved with surveyCompleted: true');
+    await chrome.storage.local.set(payload);
+    console.log('💧 DropQuery: Storage saved atomically with surveyCompleted: true', { commitId: __lastCommitId });
     
-    // verify immediately
-    const verify1 = await chrome.storage.local.get(['surveyCompleted', 'isResetting']);
-    console.log('💧 DropQuery: First verification', {
-      surveyCompleted: verify1.surveyCompleted,
-      isResetting: verify1.isResetting
-    });
-    
-    if (!verify1.surveyCompleted) {
-      console.error('💧 DropQuery: ERROR - surveyCompleted not saved! Retrying...');
-      // retry once
-      await chrome.storage.local.set({
-        surveyCompleted: true,
-        isResetting: false
-      });
-      const verify2 = await chrome.storage.local.get(['surveyCompleted']);
-      console.log('💧 DropQuery: Retry verification', { surveyCompleted: verify2.surveyCompleted });
-    }
-    
-    // send to supabase (non-blocking)
-    try {
-      await saveUserDataToSupabase(userData);
-    } catch (error) {
-      console.warn('💧 DropQuery: Error saving to Supabase', error);
-      // don't block survey completion if Supabase fails
-    }
-    
-    // CRITICAL: Switch to dashboard IMMEDIATELY and update UI
-    // Don't wait for anything - do this synchronously
+    // Switch UI immediately (no waiting for listeners)
     console.log('💧 DropQuery: Switching to dashboard view IMMEDIATELY');
-    
-    // Hide survey and show dashboard immediately (synchronous DOM manipulation)
     surveyContainer.style.display = 'none';
     dashboardContainer.classList.add('show');
     dashboardContainer.style.display = 'block';
-    
     console.log('💧 DropQuery: Dashboard visible, survey hidden');
     
     // Update dashboard content
     await updateDashboard();
     
-    // Verify state was saved and restore if needed
-    const finalVerify = await chrome.storage.local.get(['surveyCompleted']);
-    console.log('💧 DropQuery: Final verification', {
-      surveyCompleted: finalVerify.surveyCompleted
+    // Verify persist (best-effort)
+    chrome.storage.local.get(['surveyCompleted', 'surveyCommitId'], ({ surveyCompleted, surveyCommitId }) => {
+      if (!surveyCompleted || surveyCommitId !== __lastCommitId) {
+        console.warn('💧 DropQuery: Survey commit verify failed', {
+          surveyCompleted,
+          expectedCommitId: __lastCommitId,
+          actualCommitId: surveyCommitId
+        });
+        // Restore if needed
+        if (!surveyCompleted) {
+          chrome.storage.local.set({ surveyCompleted: true, surveyCommitId: __lastCommitId });
+        }
+      } else {
+        console.log('💧 DropQuery: Survey commit verified successfully', { commitId: surveyCommitId });
+      }
+      
+      // Small delay before releasing guard to let onChanged settle
+      setTimeout(() => {
+        __isSubmitting = false;
+        console.log('💧 DropQuery: Submission guard released');
+      }, 150);
     });
     
-    if (!finalVerify.surveyCompleted) {
-      console.error('💧 DropQuery: CRITICAL - surveyCompleted was cleared! Restoring...');
-      await chrome.storage.local.set({ surveyCompleted: true });
-      // Force UI update again
-      surveyContainer.style.display = 'none';
-      dashboardContainer.classList.add('show');
-      dashboardContainer.style.display = 'block';
-    }
-    
-    // Set a flag to prevent initial state check from interfering
-    window.dropQuerySurveyJustCompleted = true;
-    setTimeout(() => {
-      window.dropQuerySurveyJustCompleted = false;
-    }, 1000);
+    // send to supabase (non-blocking, don't wait)
+    saveUserDataToSupabase(userData).catch(error => {
+      console.warn('💧 DropQuery: Error saving to Supabase', error);
+      // don't block survey completion if Supabase fails
+    });
   });
   
   // handle notification frequency change
