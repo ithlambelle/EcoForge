@@ -327,8 +327,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 function showDashboard() {
-  document.getElementById('survey-container').style.display = 'none';
-  document.getElementById('dashboard-container').classList.add('show');
+  const surveyContainer = document.getElementById('survey-container');
+  const dashboardContainer = document.getElementById('dashboard-container');
+  
+  if (surveyContainer) {
+    surveyContainer.style.display = 'none';
+  }
+  if (dashboardContainer) {
+    dashboardContainer.classList.add('show');
+    dashboardContainer.style.display = 'block';
+  }
+  
+  console.log('💧 DropQuery: showDashboard() called', {
+    surveyHidden: surveyContainer?.style.display === 'none',
+    dashboardVisible: dashboardContainer?.classList.contains('show')
+  });
 }
 
 async function updateDashboard() {
