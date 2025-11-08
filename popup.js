@@ -1,5 +1,13 @@
 // popup.js - handles popup UI and survey
 
+// submission guard and commit token to prevent race conditions
+let __isSubmitting = false;
+let __lastCommitId = null;
+
+function genId() {
+  return (crypto?.randomUUID?.() || String(Date.now()) + Math.random());
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   const surveyContainer = document.getElementById('survey-container');
   const dashboardContainer = document.getElementById('dashboard-container');
@@ -47,54 +55,61 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // listen for storage changes to update dashboard when data changes
   chrome.storage.onChanged.addListener(async (changes, areaName) => {
-    if (areaName === 'local') {
-      // handle resetting flag
-      if (changes.isResetting) {
-        if (changes.isResetting.newValue === false) {
-          // reset complete, update dashboard to show zeros
-          const zeroFormatted = await formatWaterUsage(0);
-          document.getElementById('today-usage').textContent = zeroFormatted;
-          document.getElementById('week-usage').textContent = zeroFormatted;
-          document.getElementById('total-usage').textContent = zeroFormatted;
-          document.getElementById('avg-usage').textContent = zeroFormatted;
-          document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
-          document.getElementById('comparison-message').className = 'comparison-card';
-        }
+    if (areaName !== 'local') return;
+    
+    // If we are in the middle of submit, ignore storage changes (prevent echo)
+    if (__isSubmitting) {
+      console.log('💧 DropQuery: Ignoring storage change during submission');
+      return;
+    }
+    
+    // handle resetting flag
+    if (changes.isResetting) {
+      if (changes.isResetting.newValue === false) {
+        // reset complete, update dashboard to show zeros
+        const zeroFormatted = await formatWaterUsage(0);
+        document.getElementById('today-usage').textContent = zeroFormatted;
+        document.getElementById('week-usage').textContent = zeroFormatted;
+        document.getElementById('total-usage').textContent = zeroFormatted;
+        document.getElementById('avg-usage').textContent = zeroFormatted;
+        document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
+        document.getElementById('comparison-message').className = 'comparison-card';
       }
+    }
+    
+    // if surveyCompleted changes, update UI accordingly
+    if (changes.surveyCompleted) {
+      const newValue = changes.surveyCompleted.newValue;
+      const oldValue = changes.surveyCompleted.oldValue;
       
-      // if surveyCompleted changes, update UI accordingly
-      if (changes.surveyCompleted) {
-        const newValue = changes.surveyCompleted.newValue;
-        const oldValue = changes.surveyCompleted.oldValue;
+      console.log('💧 DropQuery: surveyCompleted changed', {
+        oldValue,
+        newValue
+      });
+      
+      if (newValue === true && oldValue !== true) {
+        // survey was just completed - switch to dashboard
+        console.log('💧 DropQuery: Survey completed detected, switching to dashboard');
+        showDashboard();
+        await updateDashboard();
+      } else if (!newValue) {
+        // survey was reset, update dashboard to show zeros
+        const zeroFormatted = await formatWaterUsage(0);
+        document.getElementById('today-usage').textContent = zeroFormatted;
+        document.getElementById('week-usage').textContent = zeroFormatted;
+        document.getElementById('total-usage').textContent = zeroFormatted;
+        document.getElementById('avg-usage').textContent = zeroFormatted;
+        document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
+        document.getElementById('comparison-message').className = 'comparison-card';
         
-        console.log('💧 DropQuery: surveyCompleted changed', {
-          oldValue,
-          newValue
-        });
-        
-        if (newValue === true && oldValue !== true) {
-          // survey was just completed - switch to dashboard
-          console.log('💧 DropQuery: Survey completed detected, switching to dashboard');
-          showDashboard();
-          await updateDashboard();
-        } else if (!newValue) {
-          // survey was reset, update dashboard to show zeros
-          const zeroFormatted = await formatWaterUsage(0);
-          document.getElementById('today-usage').textContent = zeroFormatted;
-          document.getElementById('week-usage').textContent = zeroFormatted;
-          document.getElementById('total-usage').textContent = zeroFormatted;
-          document.getElementById('avg-usage').textContent = zeroFormatted;
-          document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
-          document.getElementById('comparison-message').className = 'comparison-card';
-          
-          // switch back to survey if dashboard is showing
-          if (dashboardContainer.classList.contains('show')) {
-            surveyContainer.style.display = 'block';
-            dashboardContainer.classList.remove('show');
-            dashboardContainer.style.display = 'none';
-          }
+        // switch back to survey if dashboard is showing
+        if (dashboardContainer.classList.contains('show')) {
+          surveyContainer.style.display = 'block';
+          dashboardContainer.classList.remove('show');
+          dashboardContainer.style.display = 'none';
         }
       }
+    }
       // update dashboard when usage data changes
       if (changes.dailyUsage || changes.weeklyUsage || changes.totalUsage || changes.userData) {
         if (dashboardContainer.classList.contains('show')) {
@@ -146,6 +161,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // function to check state and update UI accordingly
   async function checkStateAndUpdateUI() {
+    // Don't run if we're in the middle of submitting (prevent race condition)
+    if (__isSubmitting) {
+      console.log('💧 DropQuery: Skipping state check - submission in progress');
+      return;
+    }
+    
     const surveyData = await chrome.storage.local.get(['surveyCompleted', 'userData', 'dailyUsage', 'isResetting']);
     
     console.log('💧 DropQuery: State check', {
@@ -185,7 +206,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   surveyForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    console.log('💧 DropQuery: Survey form submitted');
+    // Prevent double submission
+    if (__isSubmitting) {
+      console.log('💧 DropQuery: Submission already in progress, ignoring');
+      return;
+    }
+    
+    __isSubmitting = true;
+    __lastCommitId = genId();
+    
+    console.log('💧 DropQuery: Survey form submitted', { commitId: __lastCommitId });
     
     // disable form to prevent double submission
     surveyForm.style.pointerEvents = 'none';
@@ -224,63 +254,60 @@ document.addEventListener('DOMContentLoaded', async () => {
       createdAt: new Date().toISOString()
     };
     
-    // ensure isResetting flag is cleared when completing survey
-    // save all data in one atomic operation
-    await chrome.storage.local.set({
+    // Atomically write everything needed in ONE set() operation
+    const payload = {
       surveyCompleted: true,
       userData: userData,
       dailyUsage: surveyWaterUsage,
       weeklyUsage: surveyWaterUsage,
       totalUsage: surveyWaterUsage,
-      isResetting: false, // clear reset flag if it was set
-      queries: [] // ensure queries array exists
-    });
+      isResetting: false, // ensure old reset state can't interfere
+      queries: [], // ensure queries array exists
+      surveyCommitId: __lastCommitId, // commit token for verification
+      surveyCommittedAt: Date.now() // timestamp to help debug
+    };
     
-    console.log('💧 DropQuery: Storage saved with surveyCompleted: true');
+    await chrome.storage.local.set(payload);
+    console.log('💧 DropQuery: Storage saved atomically with surveyCompleted: true', { commitId: __lastCommitId });
     
-    // verify immediately
-    const verify1 = await chrome.storage.local.get(['surveyCompleted', 'isResetting']);
-    console.log('💧 DropQuery: First verification', {
-      surveyCompleted: verify1.surveyCompleted,
-      isResetting: verify1.isResetting
-    });
+    // Switch UI immediately (no waiting for listeners)
+    console.log('💧 DropQuery: Switching to dashboard view IMMEDIATELY');
+    surveyContainer.style.display = 'none';
+    dashboardContainer.classList.add('show');
+    dashboardContainer.style.display = 'block';
+    console.log('💧 DropQuery: Dashboard visible, survey hidden');
     
-    if (!verify1.surveyCompleted) {
-      console.error('💧 DropQuery: ERROR - surveyCompleted not saved! Retrying...');
-      // retry once
-      await chrome.storage.local.set({
-        surveyCompleted: true,
-        isResetting: false
-      });
-      const verify2 = await chrome.storage.local.get(['surveyCompleted']);
-      console.log('💧 DropQuery: Retry verification', { surveyCompleted: verify2.surveyCompleted });
-    }
-    
-    // send to supabase (non-blocking)
-    try {
-      await saveUserDataToSupabase(userData);
-    } catch (error) {
-      console.warn('💧 DropQuery: Error saving to Supabase', error);
-      // don't block survey completion if Supabase fails
-    }
-    
-    // switch to dashboard view BEFORE any async operations that might delay
-    console.log('💧 DropQuery: Switching to dashboard view');
-    showDashboard();
-    
-    // update dashboard
+    // Update dashboard content
     await updateDashboard();
     
-    // final verification
-    const finalVerify = await chrome.storage.local.get(['surveyCompleted']);
-    console.log('💧 DropQuery: Final verification after dashboard shown', {
-      surveyCompleted: finalVerify.surveyCompleted
+    // Verify persist (best-effort)
+    chrome.storage.local.get(['surveyCompleted', 'surveyCommitId'], ({ surveyCompleted, surveyCommitId }) => {
+      if (!surveyCompleted || surveyCommitId !== __lastCommitId) {
+        console.warn('💧 DropQuery: Survey commit verify failed', {
+          surveyCompleted,
+          expectedCommitId: __lastCommitId,
+          actualCommitId: surveyCommitId
+        });
+        // Restore if needed
+        if (!surveyCompleted) {
+          chrome.storage.local.set({ surveyCompleted: true, surveyCommitId: __lastCommitId });
+        }
+      } else {
+        console.log('💧 DropQuery: Survey commit verified successfully', { commitId: surveyCommitId });
+      }
+      
+      // Small delay before releasing guard to let onChanged settle
+      setTimeout(() => {
+        __isSubmitting = false;
+        console.log('💧 DropQuery: Submission guard released');
+      }, 150);
     });
     
-    if (!finalVerify.surveyCompleted) {
-      console.error('💧 DropQuery: CRITICAL - surveyCompleted was cleared! Restoring...');
-      await chrome.storage.local.set({ surveyCompleted: true });
-    }
+    // send to supabase (non-blocking, don't wait)
+    saveUserDataToSupabase(userData).catch(error => {
+      console.warn('💧 DropQuery: Error saving to Supabase', error);
+      // don't block survey completion if Supabase fails
+    });
   });
   
   // handle notification frequency change
@@ -296,26 +323,41 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (resetBtn) {
     resetBtn.addEventListener('click', async () => {
       if (confirm('Are you sure you want to reset all your data? This will clear all your usage statistics and you will need to complete the survey again.')) {
-        // set resetting flag to prevent updates during reset
+        // Set resetting flag to prevent updates during reset
         await chrome.storage.local.set({ isResetting: true });
         
-        // clear all storage
+        // Clear all storage
         await chrome.storage.local.clear();
         
-        // reset survey form
+        // Re-seed baseline keys so UI has deterministic state
+        await chrome.storage.local.set({
+          surveyCompleted: false,
+          isResetting: false,
+          waterUnit: 'ml', // default
+          dailyUsage: 0,
+          weeklyUsage: 0,
+          totalUsage: 0,
+          queries: [],
+          userData: {
+            averageUsage: 0,
+            dailyHistory: []
+          }
+        });
+        
+        // Reset survey form
         surveyForm.reset();
         document.getElementById('usage-frequency').value = '';
         document.getElementById('water-awareness').value = '';
         document.getElementById('usage-purpose').value = '';
         document.getElementById('screen-time').value = '';
         
-        // hide survey water display if it exists
+        // Hide survey water display if it exists
         const surveyWaterDisplay = document.getElementById('survey-water-display');
         if (surveyWaterDisplay) {
           surveyWaterDisplay.remove();
         }
         
-        // reset dashboard stats to zero before hiding
+        // Reset dashboard stats to zero
         const zeroFormatted = await formatWaterUsage(0);
         document.getElementById('today-usage').textContent = zeroFormatted;
         document.getElementById('week-usage').textContent = zeroFormatted;
@@ -324,15 +366,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
         document.getElementById('comparison-message').className = 'comparison-card';
         
-        // show survey, hide dashboard
+        // Show survey, hide dashboard
         surveyContainer.style.display = 'block';
         dashboardContainer.classList.remove('show');
-        
-        // set surveyCompleted to false and clear resetting flag
-        await chrome.storage.local.set({
-          surveyCompleted: false,
-          isResetting: false
-        });
+        dashboardContainer.style.display = 'none';
         
         // notify content script to update/hide UI
         try {
@@ -345,6 +382,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
           // ignore errors
         }
+        
+        console.log('💧 DropQuery: Reset completed, state re-seeded');
       }
     });
   }

@@ -1957,14 +1957,13 @@
     try {
       const data = await chrome.storage.local.get(['dailyUsage', 'queries', 'surveyCompleted', 'isResetting']);
       
-      // stop updates during reset
+      // ⛔ Never update during reset
       if (data.isResetting) {
         return;
       }
       
-      // only show UI if survey is completed
+      // ⛔ Never update if survey not completed - reset UI and return
       if (!data.surveyCompleted) {
-        // survey not completed - ensure UI is hidden and values are reset
         resetUIToZero();
         return;
       }
