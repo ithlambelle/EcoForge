@@ -126,12 +126,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   
   // check if user has completed survey
-  const surveyData = await chrome.storage.local.get(['surveyCompleted', 'userData', 'dailyUsage']);
+  const surveyData = await chrome.storage.local.get(['surveyCompleted', 'userData', 'dailyUsage', 'isResetting']);
+  
+  console.log('💧 Waterer: Initial state check', {
+    surveyCompleted: surveyData.surveyCompleted,
+    isResetting: surveyData.isResetting,
+    hasUserData: !!surveyData.userData
+  });
+  
+  // if isResetting is true, clear it (shouldn't happen, but just in case)
+  if (surveyData.isResetting) {
+    console.log('💧 Waterer: Clearing stuck isResetting flag');
+    await chrome.storage.local.set({ isResetting: false });
+  }
   
   if (surveyData.surveyCompleted) {
+    console.log('💧 Waterer: Survey already completed, showing dashboard');
     showDashboard();
     await updateDashboard();
   } else {
+    console.log('💧 Waterer: Survey not completed, showing survey form');
     surveyContainer.style.display = 'block';
     dashboardContainer.style.display = 'none';
     
@@ -171,19 +185,35 @@ document.addEventListener('DOMContentLoaded', async () => {
       createdAt: new Date().toISOString()
     };
     
+    // ensure isResetting flag is cleared when completing survey
     await chrome.storage.local.set({
       surveyCompleted: true,
       userData: userData,
       dailyUsage: surveyWaterUsage,
       weeklyUsage: surveyWaterUsage,
-      totalUsage: surveyWaterUsage
+      totalUsage: surveyWaterUsage,
+      isResetting: false // clear reset flag if it was set
     });
     
-    // send to supabase
-    await saveUserDataToSupabase(userData);
+    console.log('💧 Waterer: Survey completed, surveyCompleted set to true');
     
+    // send to supabase
+    try {
+      await saveUserDataToSupabase(userData);
+    } catch (error) {
+      console.warn('💧 Waterer: Error saving to Supabase', error);
+      // don't block survey completion if Supabase fails
+    }
+    
+    // verify the state was saved
+    const verify = await chrome.storage.local.get(['surveyCompleted']);
+    console.log('💧 Waterer: Verified surveyCompleted after save:', verify.surveyCompleted);
+    
+    // switch to dashboard view
     showDashboard();
     await updateDashboard();
+    
+    console.log('💧 Waterer: Dashboard shown');
   });
   
   // handle notification frequency change
