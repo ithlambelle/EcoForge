@@ -47,6 +47,13 @@
       createSquare();
       createWaterBottle();
       
+      // ensure displays are updated with fresh data from storage
+      // wait a bit to ensure storage is ready
+      setTimeout(async () => {
+        await updateSquareDisplay();
+        await updateBottleDisplay();
+      }, 100);
+      
       // start tracking
       startTracking();
       
@@ -133,7 +140,12 @@
                 countEl.innerHTML = '0 <span class="suffix">queries</span>';
               }
               if (usageEl) {
-                usageEl.innerHTML = '0 <span class="suffix">ml</span>';
+                usageEl.innerHTML = '0.0000 <span class="suffix">ml</span>';
+                // also remove ml-value if it exists
+                const mlValue = usageEl.querySelector('.ml-value');
+                if (mlValue) {
+                  mlValue.remove();
+                }
               }
             }
             if (bottleElement) {
@@ -150,6 +162,16 @@
             // reset local variables
             queryCount = 0;
             totalWaterUsage = 0;
+            
+            // force update displays with zero values after a short delay
+            setTimeout(async () => {
+              try {
+                await updateSquareDisplay();
+                await updateBottleDisplay();
+              } catch (error) {
+                // ignore errors
+              }
+            }, 100);
           }
         }
       }
@@ -1848,7 +1870,12 @@
             countEl.innerHTML = '0 <span class="suffix">queries</span>';
           }
           if (usageEl) {
-            usageEl.innerHTML = '0 <span class="suffix">ml</span>';
+            usageEl.innerHTML = '0.0000 <span class="suffix">ml</span>';
+            // also remove ml-value if it exists
+            const mlValue = usageEl.querySelector('.ml-value');
+            if (mlValue) {
+              mlValue.remove();
+            }
           }
         }
         if (bottleElement) {
@@ -1865,6 +1892,23 @@
         // reset local variables
         queryCount = 0;
         totalWaterUsage = 0;
+        
+        // force update displays with zero values to ensure they're reset
+        // wait a bit for storage to be cleared, then update
+        setTimeout(async () => {
+          try {
+            // verify storage is cleared
+            const data = await chrome.storage.local.get(['dailyUsage', 'queries', 'surveyCompleted']);
+            if (!data.surveyCompleted && squareElement) {
+              // storage is cleared, force update displays
+              await updateSquareDisplay();
+              await updateBottleDisplay();
+            }
+          } catch (error) {
+            // ignore errors
+          }
+        }, 100);
+        
         sendResponse({ success: true });
         return true;
       }
