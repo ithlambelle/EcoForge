@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // update dashboard when usage data changes
-    if (changes.dailyUsage || changes.weeklyUsage || changes.totalUsage || changes.userData) {
+    if (changes.dailyUsage || changes.weeklyUsage || changes.totalUsage || changes.userData || changes.queries) {
       if (dashboardContainer.classList.contains('show')) {
         updateDashboard();
       }

@@ -9,10 +9,11 @@ body {
   min-height: 500px;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
   background: linear-gradient(135deg, 
-    rgba(0, 188, 212, 0.9) 0%, 
-    rgba(0, 150, 136, 0.85) 30%,
-    rgba(33, 150, 243, 0.9) 70%,
-    rgba(0, 188, 212, 0.85) 100%);
+    rgba(33, 150, 243, 0.95) 0%, 
+    rgba(0, 188, 212, 0.9) 25%,
+    rgba(25, 118, 210, 0.9) 50%,
+    rgba(33, 150, 243, 0.95) 75%,
+    rgba(0, 188, 212, 0.9) 100%);
   background-attachment: fixed;
   color: #004d40;
   position: relative;

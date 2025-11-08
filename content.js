@@ -408,15 +408,17 @@
   }
   
   // toggle between units: ml -> gallons -> ounces -> ml
-  function toggleUnit() {
+  async function toggleUnit() {
     const units = ['ml', 'gallons', 'ounces'];
     const currentIndex = units.indexOf(currentUnit);
     currentUnit = units[(currentIndex + 1) % units.length];
     
     // save preference
-    chrome.storage.local.set({ waterUnit: currentUnit }).catch(() => {});
+    await chrome.storage.local.set({ waterUnit: currentUnit });
     
-    updateSquareDisplay();
+    // update both displays with converted values
+    await updateSquareDisplay();
+    await updateBottleDisplay();
   }
   
   // helper function to format water usage with up to 4 decimal places (removes trailing zeros)
@@ -1830,21 +1832,22 @@
   
   // listen for messages (for future enhancements)
   try {
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       if (message.type === 'resetData') {
         // set resetting flag to prevent periodic updates
-        chrome.storage.local.set({ isResetting: true }, async () => {
-          // clear all storage
-          await chrome.storage.local.clear();
-          
-          // reset UI immediately
-          resetUIToZero();
-          
-          // set surveyCompleted to false and clear resetting flag
-          chrome.storage.local.set({
-            surveyCompleted: false,
-            isResetting: false
-          });
+        await chrome.storage.local.set({ isResetting: true });
+        
+        // clear all storage
+        await chrome.storage.local.clear();
+        
+        // reset UI immediately (now async)
+        await resetUIToZero();
+        
+        // set surveyCompleted to false and clear resetting flag
+        await chrome.storage.local.set({
+          surveyCompleted: false,
+          isResetting: false,
+          waterUnit: 'ml' // reset to default unit
         });
         
         sendResponse({ success: true });
@@ -1928,28 +1931,64 @@
   console.log('💧 Waterer: Content script loaded on', window.location.hostname);
   
   // centralized function to reset UI to zero
-  function resetUIToZero() {
+  async function resetUIToZero() {
+    // reset local variables first
+    queryCount = 0;
+    totalWaterUsage = 0;
+    
     if (squareElement) {
+      // hide square
       squareElement.style.display = 'none';
+      
+      // reset query count
       const countEl = squareElement.querySelector('.query-count');
-      const usageEl = squareElement.querySelector('.water-usage');
       if (countEl) {
         countEl.innerHTML = '0 <span class="suffix">queries</span>';
       }
+      
+      // reset water usage - format with current unit
+      const usageEl = squareElement.querySelector('.water-usage');
       if (usageEl) {
-        usageEl.innerHTML = '0.0000 <span class="suffix">ml</span>';
+        const unitData = await chrome.storage.local.get(['waterUnit']);
+        const unitToUse = unitData.waterUnit || currentUnit || 'ml';
+        const formatted = await formatWaterUsage(0, unitToUse);
+        const parts = formatted.split(' ');
+        const numberPart = parts[0];
+        const unitLabel = parts[1] || getUnitLabel(unitToUse);
+        
+        // clear existing content
+        usageEl.innerHTML = '';
+        const suffix = document.createElement('span');
+        suffix.className = 'suffix';
+        suffix.textContent = ` ${unitLabel}`;
+        usageEl.innerHTML = `${numberPart}`;
+        usageEl.appendChild(suffix);
+        
+        // remove ml-value if it exists
         const mlValue = usageEl.querySelector('.ml-value');
         if (mlValue) mlValue.remove();
       }
     }
+    
     if (bottleElement) {
       const container = document.querySelector('.water-bottle-container');
-      if (container) container.style.display = 'none';
-      const waterFill = bottleElement.querySelector('.water-fill');
-      if (waterFill) waterFill.style.height = '0%';
+      if (container) {
+        container.style.display = 'none';
+        // reset bottle fill
+        const waterFill = bottleElement.querySelector('.water-fill');
+        if (waterFill) {
+          waterFill.style.height = '0%';
+        }
+        // reset bottle label
+        const label = bottleElement.querySelector('.bottle-label');
+        if (label) {
+          const unitData = await chrome.storage.local.get(['waterUnit']);
+          const unitToUse = unitData.waterUnit || currentUnit || 'ml';
+          const formatted = await formatWaterUsage(0, unitToUse);
+          label.textContent = formatted;
+        }
+      }
     }
-    queryCount = 0;
-    totalWaterUsage = 0;
   }
   
   // update display periodically and ensure UI elements exist
