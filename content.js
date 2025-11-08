@@ -1525,9 +1525,37 @@
     
     const difference = averageUsage - dailyUsage;
     
-    // don't show messages if average is 0 (user hasn't established baseline yet)
+    // show educational messages if average is 0 (user hasn't established baseline yet)
     if (!averageUsage || averageUsage === 0) {
-      messageElement.textContent = `💧 Query tracked! Building your usage baseline...`;
+      // calculate real-world impact for educational purposes
+      const childDailyNeed = 2000; // ~2L per child per day
+      const adultDailyNeed = 3000; // average: 3L per adult per day
+      const dogDailyNeed = 1500;    // ~1.5L per 50lb dog per day
+      const catDailyNeed = 250;     // ~0.25L per 10lb cat per day
+      
+      const children = Math.floor(dailyUsage / childDailyNeed);
+      const adults = Math.floor(dailyUsage / adultDailyNeed);
+      const dogs = Math.floor(dailyUsage / dogDailyNeed);
+      const cats = Math.floor(dailyUsage / catDailyNeed);
+      
+      // create educational message with real-world impact
+      let message = '';
+      if (cats >= 1) {
+        message = `💧 Your ${formatWaterUsage(dailyUsage, currentUnit)} today could provide clean drinking water for ${cats} ${cats === 1 ? 'cat' : 'cats'} for a day!`;
+      } else if (children >= 1) {
+        message = `💧 Your ${formatWaterUsage(dailyUsage, currentUnit)} today could hydrate ${children} ${children === 1 ? 'child' : 'children'} for a day!`;
+      } else if (adults >= 1) {
+        message = `💧 Your ${formatWaterUsage(dailyUsage, currentUnit)} today could provide daily water for ${adults} ${adults === 1 ? 'adult' : 'adults'}!`;
+      } else if (dogs >= 1) {
+        message = `💧 Your ${formatWaterUsage(dailyUsage, currentUnit)} today could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day!`;
+      } else {
+        // very small usage - show in terms of cats or small impact
+        const catFraction = (dailyUsage / catDailyNeed).toFixed(2);
+        message = `💧 Your ${formatWaterUsage(dailyUsage, currentUnit)} today represents ${catFraction} of a cat's daily water needs. Every drop counts!`;
+      }
+      
+      messageElement.textContent = message;
+      messageElement.classList.add('positive'); // use positive styling for educational messages
       document.body.appendChild(messageElement);
       setTimeout(() => {
         if (messageElement) {

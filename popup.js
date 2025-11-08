@@ -335,11 +335,39 @@ function updateComparisonMessage(dailyUsage, averageUsage) {
   if (!averageUsage || averageUsage === 0) {
     if (dailyUsage === 0) {
       comparisonText.textContent = 'Track your first query to see your impact!';
+      comparisonCard.className = 'comparison-card';
     } else {
-      // user has usage but no average yet - building up their baseline
-      comparisonText.textContent = 'Building your usage baseline... Keep tracking to see how you compare!';
+      // user has usage but no average yet - show educational impact
+      const adultDailyNeed = 3000; // average: 3L per adult per day
+      const childDailyNeed = 2000; // ~2L per child per day
+      const dogDailyNeed = 1500;    // ~1.5L per 50lb dog per day
+      const catDailyNeed = 250;     // ~0.25L per 10lb cat per day
+      
+      // calculate how many people/animals could be fed with current usage
+      const children = Math.floor(dailyUsage / childDailyNeed);
+      const adults = Math.floor(dailyUsage / adultDailyNeed);
+      const dogs = Math.floor(dailyUsage / dogDailyNeed);
+      const cats = Math.floor(dailyUsage / catDailyNeed);
+      
+      // create educational message with real-world impact
+      let message = '';
+      if (cats >= 1) {
+        message = `💧 Your ${formatWaterUsage(dailyUsage)} today could provide clean drinking water for ${cats} ${cats === 1 ? 'cat' : 'cats'} for a day!`;
+      } else if (children >= 1) {
+        message = `💧 Your ${formatWaterUsage(dailyUsage)} today could hydrate ${children} ${children === 1 ? 'child' : 'children'} for a day!`;
+      } else if (adults >= 1) {
+        message = `💧 Your ${formatWaterUsage(dailyUsage)} today could provide daily water for ${adults} ${adults === 1 ? 'adult' : 'adults'}!`;
+      } else if (dogs >= 1) {
+        message = `💧 Your ${formatWaterUsage(dailyUsage)} today could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day!`;
+      } else {
+        // very small usage - show in terms of cats or small impact
+        const catFraction = (dailyUsage / catDailyNeed).toFixed(2);
+        message = `💧 Your ${formatWaterUsage(dailyUsage)} today represents ${catFraction} of a cat's daily water needs. Every drop counts!`;
+      }
+      
+      comparisonText.textContent = message;
+      comparisonCard.className = 'comparison-card';
     }
-    comparisonCard.className = 'comparison-card';
     return;
   }
   
