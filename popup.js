@@ -55,54 +55,61 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // listen for storage changes to update dashboard when data changes
   chrome.storage.onChanged.addListener(async (changes, areaName) => {
-    if (areaName === 'local') {
-      // handle resetting flag
-      if (changes.isResetting) {
-        if (changes.isResetting.newValue === false) {
-          // reset complete, update dashboard to show zeros
-          const zeroFormatted = await formatWaterUsage(0);
-          document.getElementById('today-usage').textContent = zeroFormatted;
-          document.getElementById('week-usage').textContent = zeroFormatted;
-          document.getElementById('total-usage').textContent = zeroFormatted;
-          document.getElementById('avg-usage').textContent = zeroFormatted;
-          document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
-          document.getElementById('comparison-message').className = 'comparison-card';
-        }
+    if (areaName !== 'local') return;
+    
+    // If we are in the middle of submit, ignore storage changes (prevent echo)
+    if (__isSubmitting) {
+      console.log('💧 DropQuery: Ignoring storage change during submission');
+      return;
+    }
+    
+    // handle resetting flag
+    if (changes.isResetting) {
+      if (changes.isResetting.newValue === false) {
+        // reset complete, update dashboard to show zeros
+        const zeroFormatted = await formatWaterUsage(0);
+        document.getElementById('today-usage').textContent = zeroFormatted;
+        document.getElementById('week-usage').textContent = zeroFormatted;
+        document.getElementById('total-usage').textContent = zeroFormatted;
+        document.getElementById('avg-usage').textContent = zeroFormatted;
+        document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
+        document.getElementById('comparison-message').className = 'comparison-card';
       }
+    }
+    
+    // if surveyCompleted changes, update UI accordingly
+    if (changes.surveyCompleted) {
+      const newValue = changes.surveyCompleted.newValue;
+      const oldValue = changes.surveyCompleted.oldValue;
       
-      // if surveyCompleted changes, update UI accordingly
-      if (changes.surveyCompleted) {
-        const newValue = changes.surveyCompleted.newValue;
-        const oldValue = changes.surveyCompleted.oldValue;
+      console.log('💧 DropQuery: surveyCompleted changed', {
+        oldValue,
+        newValue
+      });
+      
+      if (newValue === true && oldValue !== true) {
+        // survey was just completed - switch to dashboard
+        console.log('💧 DropQuery: Survey completed detected, switching to dashboard');
+        showDashboard();
+        await updateDashboard();
+      } else if (!newValue) {
+        // survey was reset, update dashboard to show zeros
+        const zeroFormatted = await formatWaterUsage(0);
+        document.getElementById('today-usage').textContent = zeroFormatted;
+        document.getElementById('week-usage').textContent = zeroFormatted;
+        document.getElementById('total-usage').textContent = zeroFormatted;
+        document.getElementById('avg-usage').textContent = zeroFormatted;
+        document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
+        document.getElementById('comparison-message').className = 'comparison-card';
         
-        console.log('💧 DropQuery: surveyCompleted changed', {
-          oldValue,
-          newValue
-        });
-        
-        if (newValue === true && oldValue !== true) {
-          // survey was just completed - switch to dashboard
-          console.log('💧 DropQuery: Survey completed detected, switching to dashboard');
-          showDashboard();
-          await updateDashboard();
-        } else if (!newValue) {
-          // survey was reset, update dashboard to show zeros
-          const zeroFormatted = await formatWaterUsage(0);
-          document.getElementById('today-usage').textContent = zeroFormatted;
-          document.getElementById('week-usage').textContent = zeroFormatted;
-          document.getElementById('total-usage').textContent = zeroFormatted;
-          document.getElementById('avg-usage').textContent = zeroFormatted;
-          document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
-          document.getElementById('comparison-message').className = 'comparison-card';
-          
-          // switch back to survey if dashboard is showing
-          if (dashboardContainer.classList.contains('show')) {
-            surveyContainer.style.display = 'block';
-            dashboardContainer.classList.remove('show');
-            dashboardContainer.style.display = 'none';
-          }
+        // switch back to survey if dashboard is showing
+        if (dashboardContainer.classList.contains('show')) {
+          surveyContainer.style.display = 'block';
+          dashboardContainer.classList.remove('show');
+          dashboardContainer.style.display = 'none';
         }
       }
+    }
       // update dashboard when usage data changes
       if (changes.dailyUsage || changes.weeklyUsage || changes.totalUsage || changes.userData) {
         if (dashboardContainer.classList.contains('show')) {
