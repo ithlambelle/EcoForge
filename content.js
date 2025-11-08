@@ -448,17 +448,19 @@
       
       if (useGallon && !bottleElement.classList.contains('gallon')) {
         bottleElement.classList.add('gallon');
-        const label = bottleElement.querySelector('.bottle-label');
-        if (label) label.textContent = '1 Gallon';
       } else if (!useGallon && bottleElement.classList.contains('gallon')) {
         bottleElement.classList.remove('gallon');
-        const label = bottleElement.querySelector('.bottle-label');
-        if (label) label.textContent = '5ml';
-      } else if (!useGallon) {
-        // ensure label is set to 5ml
-        const label = bottleElement.querySelector('.bottle-label');
-        if (label && label.textContent !== '5ml') {
-          label.textContent = '5ml';
+      }
+      
+      // update label with selected unit
+      const label = bottleElement.querySelector('.bottle-label');
+      if (label) {
+        if (useGallon) {
+          const gallonLabel = formatWaterUsage(3785.41, currentUnit);
+          label.textContent = gallonLabel;
+        } else {
+          const mlLabel = formatWaterUsage(5, currentUnit);
+          label.textContent = mlLabel;
         }
       }
       
