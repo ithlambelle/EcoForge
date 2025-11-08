@@ -7,7 +7,7 @@
 body {
   width: 400px;
   min-height: 500px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
   background: linear-gradient(135deg, 
     rgba(0, 188, 212, 0.9) 0%, 
     rgba(0, 150, 136, 0.85) 30%,
