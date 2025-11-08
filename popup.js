@@ -234,6 +234,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // handle survey submission
   surveyForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    
+    console.log('💧 DropQuery: ====== SUBMIT EVENT FIRED ======');
     
     // Prevent double submission
     if (__isSubmitting) {
@@ -298,6 +302,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     await chrome.storage.local.set(payload);
     console.log('💧 DropQuery: Storage saved atomically with surveyCompleted: true', { commitId: __lastCommitId });
+    
+    // CRITICAL: Verify storage was actually written
+    const postSaveCheck = await chrome.storage.local.get(['surveyCompleted', 'surveyCommitId']);
+    console.log('💧 DropQuery: Post-save verification', {
+      surveyCompleted: postSaveCheck.surveyCompleted,
+      commitId: postSaveCheck.surveyCommitId,
+      matches: postSaveCheck.surveyCommitId === __lastCommitId
+    });
+    
+    if (!postSaveCheck.surveyCompleted) {
+      console.error('💧 DropQuery: CRITICAL - surveyCompleted NOT in storage after save!');
+      // Force save again
+      await chrome.storage.local.set({ surveyCompleted: true, surveyCommitId: __lastCommitId });
+    }
     
     // Switch UI immediately (no waiting for listeners) - FORCE IT
     console.log('💧 DropQuery: Switching to dashboard view IMMEDIATELY');
