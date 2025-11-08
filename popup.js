@@ -46,17 +46,32 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   
   // listen for storage changes to update dashboard when data changes
-  chrome.storage.onChanged.addListener((changes, areaName) => {
+  chrome.storage.onChanged.addListener(async (changes, areaName) => {
     if (areaName === 'local') {
+      // handle resetting flag
+      if (changes.isResetting) {
+        if (changes.isResetting.newValue === false) {
+          // reset complete, update dashboard to show zeros
+          const zeroFormatted = await formatWaterUsage(0);
+          document.getElementById('today-usage').textContent = zeroFormatted;
+          document.getElementById('week-usage').textContent = zeroFormatted;
+          document.getElementById('total-usage').textContent = zeroFormatted;
+          document.getElementById('avg-usage').textContent = zeroFormatted;
+          document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
+          document.getElementById('comparison-message').className = 'comparison-card';
+        }
+      }
+      
       // if surveyCompleted is removed or set to false, reset dashboard
       if (changes.surveyCompleted) {
         const newValue = changes.surveyCompleted.newValue;
         if (!newValue) {
           // survey was reset, update dashboard to show zeros
-          document.getElementById('today-usage').textContent = formatWaterUsage(0);
-          document.getElementById('week-usage').textContent = formatWaterUsage(0);
-          document.getElementById('total-usage').textContent = formatWaterUsage(0);
-          document.getElementById('avg-usage').textContent = formatWaterUsage(0);
+          const zeroFormatted = await formatWaterUsage(0);
+          document.getElementById('today-usage').textContent = zeroFormatted;
+          document.getElementById('week-usage').textContent = zeroFormatted;
+          document.getElementById('total-usage').textContent = zeroFormatted;
+          document.getElementById('avg-usage').textContent = zeroFormatted;
           document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
           document.getElementById('comparison-message').className = 'comparison-card';
         }
@@ -90,7 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   
   // toggle between units: ml -> gallons -> ounces -> ml
-  function toggleUnit() {
+  async function toggleUnit() {
     const units = ['ml', 'gallons', 'ounces'];
     const currentIndex = units.indexOf(currentUnit);
     currentUnit = units[(currentIndex + 1) % units.length];
@@ -99,7 +114,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     chrome.storage.local.set({ waterUnit: currentUnit }).catch(() => {});
     
     updateUnitToggleButton();
-    updateDashboard();
+    await updateDashboard();
   }
   
   // update unit toggle button text
@@ -122,7 +137,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // initialize survey water usage tracking
     let surveyWaterUsage = surveyData.dailyUsage || 0;
-    updateSurveyWaterDisplay(surveyWaterUsage);
+    await updateSurveyWaterDisplay(surveyWaterUsage);
     
     // add incremental water usage as questions are answered
     setupSurveyIncrements(surveyWaterUsage);
@@ -184,6 +199,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (resetBtn) {
     resetBtn.addEventListener('click', async () => {
       if (confirm('Are you sure you want to reset all your data? This will clear all your usage statistics and you will need to complete the survey again.')) {
+        // set resetting flag to prevent updates during reset
+        await chrome.storage.local.set({ isResetting: true });
+        
         // clear all storage
         await chrome.storage.local.clear();
         
@@ -201,16 +219,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         
         // reset dashboard stats to zero before hiding
-        document.getElementById('today-usage').textContent = formatWaterUsage(0);
-        document.getElementById('week-usage').textContent = formatWaterUsage(0);
-        document.getElementById('total-usage').textContent = formatWaterUsage(0);
-        document.getElementById('avg-usage').textContent = formatWaterUsage(0);
+        const zeroFormatted = await formatWaterUsage(0);
+        document.getElementById('today-usage').textContent = zeroFormatted;
+        document.getElementById('week-usage').textContent = zeroFormatted;
+        document.getElementById('total-usage').textContent = zeroFormatted;
+        document.getElementById('avg-usage').textContent = zeroFormatted;
         document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
         document.getElementById('comparison-message').className = 'comparison-card';
         
         // show survey, hide dashboard
         surveyContainer.style.display = 'block';
         dashboardContainer.classList.remove('show');
+        
+        // set surveyCompleted to false and clear resetting flag
+        await chrome.storage.local.set({
+          surveyCompleted: false,
+          isResetting: false
+        });
         
         // notify content script to update/hide UI
         try {
@@ -237,18 +262,18 @@ async function updateDashboard() {
   const data = await chrome.storage.local.get(['userData', 'dailyUsage', 'weeklyUsage', 'totalUsage']);
   const userData = data.userData || {};
   
-  // update stats
-  document.getElementById('today-usage').textContent = formatWaterUsage(data.dailyUsage || 0);
-  document.getElementById('week-usage').textContent = formatWaterUsage(data.weeklyUsage || 0);
-  document.getElementById('total-usage').textContent = formatWaterUsage(data.totalUsage || 0);
-  document.getElementById('avg-usage').textContent = formatWaterUsage(userData.averageUsage || 0);
+  // update stats (formatWaterUsage is now async)
+  document.getElementById('today-usage').textContent = await formatWaterUsage(data.dailyUsage || 0);
+  document.getElementById('week-usage').textContent = await formatWaterUsage(data.weeklyUsage || 0);
+  document.getElementById('total-usage').textContent = await formatWaterUsage(data.totalUsage || 0);
+  document.getElementById('avg-usage').textContent = await formatWaterUsage(userData.averageUsage || 0);
   
   // update comparison message (this will now show random variations)
-  updateComparisonMessage(data.dailyUsage || 0, userData.averageUsage || 0);
+  await updateComparisonMessage(data.dailyUsage || 0, userData.averageUsage || 0);
   
   // also update periodically to show different messages
-  setTimeout(() => {
-    updateComparisonMessage(data.dailyUsage || 0, userData.averageUsage || 0);
+  setTimeout(async () => {
+    await updateComparisonMessage(data.dailyUsage || 0, userData.averageUsage || 0);
   }, 5000);
 }
 
@@ -288,7 +313,7 @@ function setupSurveyIncrements(currentUsage) {
             [key]: true
           });
           
-          updateSurveyWaterDisplay(newUsage);
+          await updateSurveyWaterDisplay(newUsage);
           console.log(`💧 Waterer: Added ${parseFloat(usage.toFixed(4))}ml for answering ${id}`);
         }
       });
@@ -296,7 +321,7 @@ function setupSurveyIncrements(currentUsage) {
   });
 }
 
-function updateSurveyWaterDisplay(usage) {
+async function updateSurveyWaterDisplay(usage) {
   // create or update water usage display in survey
   let display = document.getElementById('survey-water-display');
   if (!display) {
@@ -307,7 +332,8 @@ function updateSurveyWaterDisplay(usage) {
     surveyForm.insertBefore(display, surveyForm.querySelector('.submit-btn'));
   }
   
-  const formatted = formatWaterUsage(usage);
+  // formatWaterUsage is now async, so we need to await it
+  const formatted = await formatWaterUsage(usage);
   display.innerHTML = `
     <div style="font-size: 14px; color: #1976d2; font-weight: bold;">
       Water used so far: <span id="survey-water-amount">${formatted}</span>
@@ -351,8 +377,23 @@ function calculateAverageUsage(surveyAnswers) {
   return Math.round(baseUsage);
 }
 
-function formatWaterUsage(ml, unit = null) {
-  const targetUnit = unit || currentUnit;
+// format water usage - always reads unit from storage to ensure accuracy
+async function formatWaterUsage(ml, unit = null) {
+  // if unit not provided, read from storage
+  let targetUnit = unit;
+  if (!targetUnit) {
+    try {
+      const data = await chrome.storage.local.get(['waterUnit']);
+      targetUnit = data.waterUnit || currentUnit || 'ml';
+      // update currentUnit for consistency
+      if (data.waterUnit && ['ml', 'gallons', 'ounces'].includes(data.waterUnit)) {
+        currentUnit = data.waterUnit;
+      }
+    } catch (error) {
+      targetUnit = currentUnit || 'ml';
+    }
+  }
+  
   const converted = convertToUnit(ml, targetUnit);
   const unitLabel = getUnitLabel(targetUnit);
   
@@ -395,18 +436,27 @@ function updateComparisonMessage(dailyUsage, averageUsage) {
       
       // create educational message with real-world impact
       let message = '';
+      // get unit from storage for accurate formatting
+      const unitData = await chrome.storage.local.get(['waterUnit']);
+      const unitToUse = unitData.waterUnit || currentUnit || 'ml';
+      
       if (cats >= 1) {
-        message = `Your ${formatWaterUsage(dailyUsage)} today could provide clean drinking water for ${cats} ${cats === 1 ? 'cat' : 'cats'} for a day!`;
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today could provide clean drinking water for ${cats} ${cats === 1 ? 'cat' : 'cats'} for a day!`;
       } else if (children >= 1) {
-        message = `Your ${formatWaterUsage(dailyUsage)} today could hydrate ${children} ${children === 1 ? 'child' : 'children'} for a day!`;
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today could hydrate ${children} ${children === 1 ? 'child' : 'children'} for a day!`;
       } else if (adults >= 1) {
-        message = `Your ${formatWaterUsage(dailyUsage)} today could provide daily water for ${adults} ${adults === 1 ? 'adult' : 'adults'}!`;
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today could provide daily water for ${adults} ${adults === 1 ? 'adult' : 'adults'}!`;
       } else if (dogs >= 1) {
-        message = `Your ${formatWaterUsage(dailyUsage)} today could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day!`;
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day!`;
       } else {
         // very small usage - show in terms of cats or small impact
         const catFraction = (dailyUsage / catDailyNeed).toFixed(2);
-        message = `Your ${formatWaterUsage(dailyUsage)} today represents ${catFraction} of a cat's daily water needs. Every drop counts!`;
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today represents ${catFraction} of a cat's daily water needs. Every drop counts!`;
       }
       
       comparisonText.textContent = message;

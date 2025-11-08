@@ -120,6 +120,14 @@
           }
         }
         
+        // handle resetting flag
+        if (changes.isResetting) {
+          if (changes.isResetting.newValue === false) {
+            // reset complete, ensure UI is reset
+            resetUIToZero();
+          }
+        }
+        
         // handle data reset (surveyCompleted removed or set to false)
         if (changes.surveyCompleted) {
           const newValue = changes.surveyCompleted.newValue;
@@ -127,48 +135,7 @@
           
           // if surveyCompleted was true and is now false/undefined, data was reset
           if (oldValue === true && (newValue === false || newValue === undefined)) {
-            // data was reset, hide UI elements and reset display
-            if (squareElement) {
-              squareElement.style.display = 'none';
-              // reset the display values
-              const countEl = squareElement.querySelector('.query-count');
-              const usageEl = squareElement.querySelector('.water-usage');
-              if (countEl) {
-                countEl.innerHTML = '0 <span class="suffix">queries</span>';
-              }
-              if (usageEl) {
-                usageEl.innerHTML = '0.0000 <span class="suffix">ml</span>';
-                // also remove ml-value if it exists
-                const mlValue = usageEl.querySelector('.ml-value');
-                if (mlValue) {
-                  mlValue.remove();
-                }
-              }
-            }
-            if (bottleElement) {
-              const container = document.querySelector('.water-bottle-container');
-              if (container) {
-                container.style.display = 'none';
-              }
-              // reset bottle fill
-              const waterFill = bottleElement.querySelector('.water-fill');
-              if (waterFill) {
-                waterFill.style.height = '0%';
-              }
-            }
-            // reset local variables
-            queryCount = 0;
-            totalWaterUsage = 0;
-            
-            // force update displays with zero values after a short delay
-            setTimeout(async () => {
-              try {
-                await updateSquareDisplay();
-                await updateBottleDisplay();
-              } catch (error) {
-                // ignore errors
-              }
-            }, 100);
+            resetUIToZero();
           }
         }
       }
@@ -344,11 +311,17 @@
       }, 300);
     }
     if (usageEl) {
-      // ensure we have the latest unit from storage
-      const unitToUse = currentUnit || 'ml';
+      // get unit from storage to ensure accuracy
+      const unitData = await chrome.storage.local.get(['waterUnit']);
+      const unitToUse = unitData.waterUnit || currentUnit || 'ml';
       
-      // format water usage based on selected unit
-      const formatted = formatWaterUsage(currentUsage, unitToUse);
+      // update currentUnit for consistency
+      if (unitData.waterUnit && ['ml', 'gallons', 'ounces'].includes(unitData.waterUnit)) {
+        currentUnit = unitData.waterUnit;
+      }
+      
+      // format water usage based on selected unit (now async)
+      const formatted = await formatWaterUsage(currentUsage, unitToUse);
       const parts = formatted.split(' ');
       const numberPart = parts[0];
       // get unit label - formatWaterUsage might return "L" or "m³" for ml, so check parts
@@ -447,8 +420,19 @@
   }
   
   // helper function to format water usage with up to 4 decimal places (removes trailing zeros)
-  function formatWaterUsage(ml, unit = null) {
-    const targetUnit = unit || currentUnit;
+  // always reads unit from storage to ensure accuracy
+  async function formatWaterUsage(ml, unit = null) {
+    // if unit not provided, read from storage
+    let targetUnit = unit;
+    if (!targetUnit) {
+      try {
+        const data = await chrome.storage.local.get(['waterUnit']);
+        targetUnit = data.waterUnit || currentUnit || 'ml';
+      } catch (error) {
+        targetUnit = currentUnit || 'ml';
+      }
+    }
+    
     const converted = convertToUnit(ml, targetUnit);
     const unitLabel = getUnitLabel(targetUnit);
     
@@ -508,14 +492,20 @@
         bottleElement.classList.remove('gallon');
       }
       
-      // update label with selected unit
+      // update label with selected unit (read from storage)
+      const unitData = await chrome.storage.local.get(['waterUnit']);
+      const unitToUse = unitData.waterUnit || currentUnit || 'ml';
+      if (unitData.waterUnit && ['ml', 'gallons', 'ounces'].includes(unitData.waterUnit)) {
+        currentUnit = unitData.waterUnit;
+      }
+      
       const label = bottleElement.querySelector('.bottle-label');
       if (label) {
         if (useGallon) {
-          const gallonLabel = formatWaterUsage(3785.41, currentUnit);
+          const gallonLabel = await formatWaterUsage(3785.41, unitToUse);
           label.textContent = gallonLabel;
         } else {
-          const mlLabel = formatWaterUsage(5, currentUnit);
+          const mlLabel = await formatWaterUsage(5, unitToUse);
           label.textContent = mlLabel;
         }
       }
@@ -1563,19 +1553,28 @@
       const cats = Math.floor(dailyUsage / catDailyNeed);
       
       // create educational message with real-world impact
+      // get unit from storage for accurate formatting
+      const unitData = await chrome.storage.local.get(['waterUnit']);
+      const unitToUse = unitData.waterUnit || currentUnit || 'ml';
+      
       let message = '';
       if (cats >= 1) {
-        message = `💧 Your ${formatWaterUsage(dailyUsage, currentUnit)} today could provide clean drinking water for ${cats} ${cats === 1 ? 'cat' : 'cats'} for a day!`;
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today could provide clean drinking water for ${cats} ${cats === 1 ? 'cat' : 'cats'} for a day!`;
       } else if (children >= 1) {
-        message = `💧 Your ${formatWaterUsage(dailyUsage, currentUnit)} today could hydrate ${children} ${children === 1 ? 'child' : 'children'} for a day!`;
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today could hydrate ${children} ${children === 1 ? 'child' : 'children'} for a day!`;
       } else if (adults >= 1) {
-        message = `💧 Your ${formatWaterUsage(dailyUsage, currentUnit)} today could provide daily water for ${adults} ${adults === 1 ? 'adult' : 'adults'}!`;
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today could provide daily water for ${adults} ${adults === 1 ? 'adult' : 'adults'}!`;
       } else if (dogs >= 1) {
-        message = `💧 Your ${formatWaterUsage(dailyUsage, currentUnit)} today could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day!`;
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day!`;
       } else {
         // very small usage - show in terms of cats or small impact
         const catFraction = (dailyUsage / catDailyNeed).toFixed(2);
-        message = `💧 Your ${formatWaterUsage(dailyUsage, currentUnit)} today represents ${catFraction} of a cat's daily water needs. Every drop counts!`;
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today represents ${catFraction} of a cat's daily water needs. Every drop counts!`;
       }
       
       messageElement.textContent = message;
@@ -1736,7 +1735,11 @@
       
       messageElement.textContent = message;
     } else {
-      messageElement.textContent = `Query tracked! Total: ${formatWaterUsage(dailyUsage, currentUnit)}`;
+      // get unit from storage for accurate formatting
+      const unitData = await chrome.storage.local.get(['waterUnit']);
+      const unitToUse = unitData.waterUnit || currentUnit || 'ml';
+      const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+      messageElement.textContent = `Query tracked! Total: ${formatted}`;
     }
     
     const bottleContainer = document.querySelector('.water-bottle-container');
@@ -1760,17 +1763,6 @@
         messageElement = null;
       }
     }, 10000); // increased to 10 seconds
-  }
-  
-  // format water usage with up to 4 decimal places (removes trailing zeros)
-  function formatWaterUsage(ml) {
-    if (ml < 1000) {
-      return `${parseFloat(ml.toFixed(4))} ml`;
-    } else if (ml < 1000000) {
-      return `${parseFloat((ml / 1000).toFixed(4))} L`;
-    } else {
-      return `${parseFloat((ml / 1000000).toFixed(4))} m³`;
-    }
   }
   
   // save positions
@@ -1840,62 +1832,20 @@
   try {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.type === 'resetData') {
-        // reset local variables first
-        queryCount = 0;
-        totalWaterUsage = 0;
-        
-        // hide UI elements when data is reset and reset their values
-        if (squareElement) {
-          // reset the display values to 0 immediately
-          const countEl = squareElement.querySelector('.query-count');
-          const usageEl = squareElement.querySelector('.water-usage');
-          if (countEl) {
-            countEl.innerHTML = '0 <span class="suffix">queries</span>';
-          }
-          if (usageEl) {
-            usageEl.innerHTML = '0.0000 <span class="suffix">ml</span>';
-            // also remove ml-value if it exists
-            const mlValue = usageEl.querySelector('.ml-value');
-            if (mlValue) {
-              mlValue.remove();
-            }
-          }
-          // hide the square
-          squareElement.style.display = 'none';
-        }
-        if (bottleElement) {
-          // reset bottle fill to 0 immediately
-          const waterFill = bottleElement.querySelector('.water-fill');
-          if (waterFill) {
-            waterFill.style.height = '0%';
-          }
-          const container = document.querySelector('.water-bottle-container');
-          if (container) {
-            container.style.display = 'none';
-          }
-        }
-        
-        // force update displays with zero values to ensure they're reset
-        // wait a bit for storage to be cleared, then update
-        setTimeout(async () => {
-          try {
-            // verify storage is cleared and force update displays
-            const data = await chrome.storage.local.get(['dailyUsage', 'queries', 'surveyCompleted']);
-            if (!data.surveyCompleted) {
-              // storage is cleared, force update displays with zero values
-              queryCount = 0;
-              totalWaterUsage = 0;
-              if (squareElement) {
-                await updateSquareDisplay();
-              }
-              if (bottleElement) {
-                await updateBottleDisplay();
-              }
-            }
-          } catch (error) {
-            // ignore errors
-          }
-        }, 100);
+        // set resetting flag to prevent periodic updates
+        chrome.storage.local.set({ isResetting: true }, async () => {
+          // clear all storage
+          await chrome.storage.local.clear();
+          
+          // reset UI immediately
+          resetUIToZero();
+          
+          // set surveyCompleted to false and clear resetting flag
+          chrome.storage.local.set({
+            surveyCompleted: false,
+            isResetting: false
+          });
+        });
         
         sendResponse({ success: true });
         return true;
@@ -1977,35 +1927,45 @@
   // also log that script loaded
   console.log('💧 Waterer: Content script loaded on', window.location.hostname);
   
+  // centralized function to reset UI to zero
+  function resetUIToZero() {
+    if (squareElement) {
+      squareElement.style.display = 'none';
+      const countEl = squareElement.querySelector('.query-count');
+      const usageEl = squareElement.querySelector('.water-usage');
+      if (countEl) {
+        countEl.innerHTML = '0 <span class="suffix">queries</span>';
+      }
+      if (usageEl) {
+        usageEl.innerHTML = '0.0000 <span class="suffix">ml</span>';
+        const mlValue = usageEl.querySelector('.ml-value');
+        if (mlValue) mlValue.remove();
+      }
+    }
+    if (bottleElement) {
+      const container = document.querySelector('.water-bottle-container');
+      if (container) container.style.display = 'none';
+      const waterFill = bottleElement.querySelector('.water-fill');
+      if (waterFill) waterFill.style.height = '0%';
+    }
+    queryCount = 0;
+    totalWaterUsage = 0;
+  }
+  
   // update display periodically and ensure UI elements exist
   setInterval(async () => {
     try {
-      const data = await chrome.storage.local.get(['dailyUsage', 'queries', 'surveyCompleted']);
+      const data = await chrome.storage.local.get(['dailyUsage', 'queries', 'surveyCompleted', 'isResetting']);
+      
+      // stop updates during reset
+      if (data.isResetting) {
+        return;
+      }
       
       // only show UI if survey is completed
       if (!data.surveyCompleted) {
         // survey not completed - ensure UI is hidden and values are reset
-        if (squareElement) {
-          squareElement.style.display = 'none';
-          const countEl = squareElement.querySelector('.query-count');
-          const usageEl = squareElement.querySelector('.water-usage');
-          if (countEl) {
-            countEl.innerHTML = '0 <span class="suffix">queries</span>';
-          }
-          if (usageEl) {
-            usageEl.innerHTML = '0.0000 <span class="suffix">ml</span>';
-            const mlValue = usageEl.querySelector('.ml-value');
-            if (mlValue) mlValue.remove();
-          }
-        }
-        if (bottleElement) {
-          const container = document.querySelector('.water-bottle-container');
-          if (container) container.style.display = 'none';
-          const waterFill = bottleElement.querySelector('.water-fill');
-          if (waterFill) waterFill.style.height = '0%';
-        }
-        queryCount = 0;
-        totalWaterUsage = 0;
+        resetUIToZero();
         return;
       }
       
