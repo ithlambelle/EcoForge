@@ -236,7 +236,7 @@
   max-width: 300px;
   font-size: 14px;
   line-height: 1.4;
-  animation: slideUp 0.3s ease-out, fadeOut 0.3s ease-in 4.7s;
+  animation: slideUp 0.3s ease-out, fadeOut 0.3s ease-in 9.7s;
   pointer-events: none;
 }
 

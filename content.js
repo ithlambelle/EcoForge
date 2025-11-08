@@ -1585,7 +1585,7 @@
           messageElement.remove();
           messageElement = null;
         }
-      }, 5000);
+      }, 10000); // increased to 10 seconds
       return;
     }
     
@@ -1744,13 +1744,13 @@
       console.warn('💧 Waterer: document.body not available, cannot show message');
     }
     
-    // remove after 5 seconds
+    // remove after 10 seconds
     setTimeout(() => {
       if (messageElement) {
         messageElement.remove();
         messageElement = null;
       }
-    }, 5000);
+    }, 10000); // increased to 10 seconds
   }
   
   // format water usage with up to 4 decimal places (removes trailing zeros)
