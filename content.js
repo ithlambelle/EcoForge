@@ -269,12 +269,13 @@
         suffix.className = 'suffix';
       }
       
-      // show bottles if >= 1 bottle, otherwise show ml
-      if (bottles >= 1) {
-        suffix.textContent = ` bottles (${numberPart} ml)`;
-      } else {
-        suffix.textContent = ' ml';
-      }
+        // show bottles if >= 1 bottle, otherwise show ml
+        if (bottles >= 1) {
+          const bottleText = bottles === 1 ? 'bottle' : 'bottles';
+          suffix.textContent = ` ${bottleText} (${numberPart} ml)`;
+        } else {
+          suffix.textContent = ' ml';
+        }
       
       usageEl.innerHTML = bottles >= 1 ? `${bottles} ` : `${numberPart} `;
       usageEl.appendChild(suffix);
@@ -381,6 +382,9 @@
   }
   
   // inject fetch hook into page context (most reliable method)
+  // note: this will trigger CSP warnings in the console, which is expected and safe
+  // the script is injected into the page context to intercept fetch calls before React can interfere
+  // these CSP warnings can be safely ignored - they don't affect functionality
   function injectFetchHook() {
     console.log('💧 Waterer: Injecting fetch hook into page context');
     const s = document.createElement('script');
