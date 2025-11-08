@@ -547,67 +547,74 @@
   }
   
   // inject fetch hook into page context (most reliable method)
-  // note: this will trigger CSP warnings in the console, which is expected and safe
-  // the script is injected into the page context to intercept fetch calls before React can interfere
-  // these CSP warnings can be safely ignored - they don't affect functionality
+  // uses external script file to avoid CSP violations from inline scripts
   function injectFetchHook() {
     console.log('💧 Waterer: Injecting fetch hook into page context');
-    const s = document.createElement('script');
-    s.textContent = `
-      (function(){
-        const _fetch = window.fetch;
-        window.fetch = async function(input, init){
-          try {
-            const url = (typeof input === 'string') ? input : (input && input.url) || '';
-            const method = (init && init.method) || (input && input.method) || 'GET';
-            // detect ChatGPT message send
-            const looksLikeChatGPT = method === 'POST' && (/\\/backend-api\\/conversation/.test(url) || /\\/backend-anon\\/conversation/.test(url));
-            // detect Google AI Overview / Gemini
-            const looksLikeGoogleAI = method === 'POST' && (/generativelanguage\\.googleapis\\.com/.test(url) || /\\/v1\\/models/.test(url) || /gemini/.test(url) || /ai\\.google\\.dev/.test(url));
-            
-            if (looksLikeChatGPT) {
-              console.log('💧 Waterer [page]: Detected POST to conversation endpoint', url);
-              window.postMessage({ type: 'waterer:send-start', url: url, model: 'chatgpt' }, '*');
-            } else if (looksLikeGoogleAI) {
-              console.log('💧 Waterer [page]: Detected Google AI/Gemini request', url);
-              window.postMessage({ type: 'waterer:send-start', url: url, model: 'gemini' }, '*');
+    try {
+      // get extension ID dynamically
+      const scriptUrl = chrome.runtime.getURL('fetch-hook.js');
+      
+      const s = document.createElement('script');
+      s.src = scriptUrl;
+      s.onerror = () => {
+        console.warn('💧 Waterer: Failed to load fetch-hook.js, falling back to inline injection');
+        // fallback: try inline injection if external file fails
+        const fallback = document.createElement('script');
+        fallback.textContent = `
+          (function(){
+            const _fetch = window.fetch;
+            window.fetch = async function(input, init){
+              try {
+                const url = (typeof input === 'string') ? input : (input && input.url) || '';
+                const method = (init && init.method) || (input && input.method) || 'GET';
+                const looksLikeChatGPT = method === 'POST' && (/\\/backend-api\\/conversation/.test(url) || /\\/backend-anon\\/conversation/.test(url));
+                const looksLikeGoogleAI = method === 'POST' && (/generativelanguage\\.googleapis\\.com/.test(url) || /\\/v1\\/models/.test(url) || /gemini/.test(url) || /ai\\.google\\.dev/.test(url));
+                if (looksLikeChatGPT) {
+                  window.postMessage({ type: 'waterer:send-start', url: url, model: 'chatgpt' }, '*');
+                } else if (looksLikeGoogleAI) {
+                  window.postMessage({ type: 'waterer:send-start', url: url, model: 'gemini' }, '*');
+                }
+                const resp = await _fetch.apply(this, arguments);
+                if (looksLikeChatGPT && resp.ok) {
+                  window.postMessage({ type: 'waterer:send-ok', url: url, model: 'chatgpt' }, '*');
+                } else if (looksLikeGoogleAI && resp.ok) {
+                  window.postMessage({ type: 'waterer:send-ok', url: url, model: 'gemini' }, '*');
+                }
+                return resp;
+              } catch (e) {
+                return (typeof _fetch === 'function') ? _fetch.apply(this, arguments) : Promise.reject(e);
+              }
+            };
+            const _sb = navigator.sendBeacon;
+            if (_sb) {
+              navigator.sendBeacon = function(url, data){
+                const looksLikeChatGPT = /\\/backend-api\\/conversation/.test(url) || /\\/backend-anon\\/conversation/.test(url);
+                const looksLikeGoogleAI = /generativelanguage\\.googleapis\\.com/.test(url) || /\\/v1\\/models/.test(url) || /gemini/.test(url) || /ai\\.google\\.dev/.test(url);
+                if (looksLikeChatGPT) {
+                  window.postMessage({ type: 'waterer:send-start', url: url, model: 'chatgpt' }, '*');
+                  setTimeout(() => {
+                    window.postMessage({ type: 'waterer:send-ok', url: url, model: 'chatgpt' }, '*');
+                  }, 100);
+                } else if (looksLikeGoogleAI) {
+                  window.postMessage({ type: 'waterer:send-start', url: url, model: 'gemini' }, '*');
+                  setTimeout(() => {
+                    window.postMessage({ type: 'waterer:send-ok', url: url, model: 'gemini' }, '*');
+                  }, 100);
+                }
+                return _sb.apply(this, arguments);
+              };
             }
-            
-            const resp = await _fetch.apply(this, arguments);
-            if (looksLikeChatGPT && resp.ok) {
-              console.log('💧 Waterer [page]: Conversation POST succeeded');
-              window.postMessage({ type: 'waterer:send-ok', url: url, model: 'chatgpt' }, '*');
-            } else if (looksLikeGoogleAI && resp.ok) {
-              console.log('💧 Waterer [page]: Google AI request succeeded');
-              window.postMessage({ type: 'waterer:send-ok', url: url, model: 'gemini' }, '*');
-            }
-            return resp;
-          } catch (e) {
-            return (typeof _fetch === 'function') ? _fetch.apply(this, arguments) : Promise.reject(e);
-          }
-        };
-        // also cover sendBeacon
-        const _sb = navigator.sendBeacon;
-        if (_sb) {
-          navigator.sendBeacon = function(url, data){
-            const looksLikeChatGPT = /\\/backend-api\\/conversation/.test(url) || /\\/backend-anon\\/conversation/.test(url);
-            const looksLikeGoogleAI = /generativelanguage\\.googleapis\\.com/.test(url) || /gemini/.test(url) || /ai\\.google\\.dev/.test(url);
-            
-            if (looksLikeChatGPT) {
-              console.log('💧 Waterer [page]: Detected sendBeacon to conversation endpoint', url);
-              window.postMessage({ type: 'waterer:send-start', url: url, model: 'chatgpt' }, '*');
-            } else if (looksLikeGoogleAI) {
-              console.log('💧 Waterer [page]: Detected sendBeacon to Google AI endpoint', url);
-              window.postMessage({ type: 'waterer:send-start', url: url, model: 'gemini' }, '*');
-            }
-            return _sb.apply(this, arguments);
-          };
-        }
-      })();
-    `;
-    (document.head || document.documentElement).appendChild(s);
-    s.remove();
-    console.log('💧 Waterer: Fetch hook injected');
+          })();
+        `;
+        (document.head || document.documentElement).appendChild(fallback);
+        fallback.remove();
+      };
+      (document.head || document.documentElement).appendChild(s);
+      s.remove();
+      console.log('💧 Waterer: Fetch hook injected');
+    } catch (e) {
+      console.error('💧 Waterer: Error injecting fetch hook', e);
+    }
   }
   
   // listen for page->content notifications from fetch hook
