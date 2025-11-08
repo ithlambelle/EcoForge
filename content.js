@@ -262,10 +262,16 @@
         return; // extension context invalidated
       }
       
-      // get latest data from storage to ensure accuracy
-      const data = await chrome.storage.local.get(['dailyUsage', 'queries']);
+      // get latest data from storage to ensure accuracy, including unit preference
+      const data = await chrome.storage.local.get(['dailyUsage', 'queries', 'waterUnit']);
       const currentCount = data.queries?.length || queryCount;
       const currentUsage = data.dailyUsage || totalWaterUsage;
+      
+      // update currentUnit from storage if available
+      if (data.waterUnit && ['ml', 'gallons', 'ounces'].includes(data.waterUnit)) {
+        currentUnit = data.waterUnit;
+        updateUnitToggleButton();
+      }
     
     const countEl = squareElement.querySelector('.query-count');
     const usageEl = squareElement.querySelector('.water-usage');
@@ -286,14 +292,22 @@
       }, 300);
     }
     if (usageEl) {
+      // ensure we have the latest unit from storage
+      const unitToUse = currentUnit || 'ml';
+      
       // format water usage based on selected unit
-      const formatted = formatWaterUsage(currentUsage, currentUnit);
+      const formatted = formatWaterUsage(currentUsage, unitToUse);
       const parts = formatted.split(' ');
       const numberPart = parts[0];
-      const unitLabel = parts[1] || getUnitLabel(currentUnit);
+      // get unit label - formatWaterUsage might return "L" or "m³" for ml, so check parts
+      let unitLabel = parts[1];
+      if (!unitLabel || (unitLabel === 'L' || unitLabel === 'm³')) {
+        // if formatWaterUsage returned L or m³, use that, otherwise use the selected unit label
+        unitLabel = parts[1] || getUnitLabel(unitToUse);
+      }
       
       // calculate bottles based on 5ml capacity (only show if unit is ml)
-      const bottles = currentUnit === 'ml' ? Math.floor(currentUsage / 5) : 0;
+      const bottles = unitToUse === 'ml' ? Math.floor(currentUsage / 5) : 0;
       
       // create or get suffix element
       let suffix = usageEl.querySelector('.suffix');
@@ -303,7 +317,7 @@
       }
       
       // show bottles if >= 1 bottle and unit is ml, otherwise show converted value
-      if (bottles >= 1 && currentUnit === 'ml') {
+      if (bottles >= 1 && unitToUse === 'ml') {
         const bottleText = bottles === 1 ? 'bottle' : 'bottles';
         // format: "2 bottles" on main line, "10.823 ml" as smaller suffix
         usageEl.innerHTML = `${bottles} <span class="suffix">${bottleText}</span>`;
