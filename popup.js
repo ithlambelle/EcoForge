@@ -453,17 +453,33 @@ function showDashboard() {
   const surveyContainer = document.getElementById('survey-container');
   const dashboardContainer = document.getElementById('dashboard-container');
   
+  console.log('💧 DropQuery: showDashboard() called - BEFORE', {
+    surveyDisplay: surveyContainer?.style.display,
+    surveyComputed: surveyContainer ? window.getComputedStyle(surveyContainer).display : 'N/A',
+    dashboardDisplay: dashboardContainer?.style.display,
+    dashboardComputed: dashboardContainer ? window.getComputedStyle(dashboardContainer).display : 'N/A',
+    dashboardHasShow: dashboardContainer?.classList.contains('show')
+  });
+  
   if (surveyContainer) {
     surveyContainer.style.display = 'none';
+    surveyContainer.style.visibility = 'hidden';
+    surveyContainer.classList.remove('show');
   }
   if (dashboardContainer) {
     dashboardContainer.classList.add('show');
     dashboardContainer.style.display = 'block';
+    dashboardContainer.style.visibility = 'visible';
+    // Force layout recalculation
+    dashboardContainer.offsetHeight;
   }
   
-  console.log('💧 DropQuery: showDashboard() called', {
-    surveyHidden: surveyContainer?.style.display === 'none',
-    dashboardVisible: dashboardContainer?.classList.contains('show')
+  console.log('💧 DropQuery: showDashboard() called - AFTER', {
+    surveyDisplay: surveyContainer?.style.display,
+    surveyComputed: surveyContainer ? window.getComputedStyle(surveyContainer).display : 'N/A',
+    dashboardDisplay: dashboardContainer?.style.display,
+    dashboardComputed: dashboardContainer ? window.getComputedStyle(dashboardContainer).display : 'N/A',
+    dashboardHasShow: dashboardContainer?.classList.contains('show')
   });
 }
 
