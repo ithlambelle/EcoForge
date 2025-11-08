@@ -108,15 +108,15 @@
     });
     
     // listen for storage changes (unit changes and data resets)
-    chrome.storage.onChanged.addListener((changes, areaName) => {
+    chrome.storage.onChanged.addListener(async (changes, areaName) => {
       if (areaName === 'local') {
         // handle unit changes
         if (changes.waterUnit) {
           const newUnit = changes.waterUnit.newValue;
           if (['ml', 'gallons', 'ounces'].includes(newUnit)) {
             currentUnit = newUnit;
-            updateSquareDisplay();
-            updateBottleDisplay();
+            await updateSquareDisplay();
+            await updateBottleDisplay();
           }
         }
         
@@ -124,7 +124,7 @@
         if (changes.isResetting) {
           if (changes.isResetting.newValue === false) {
             // reset complete, ensure UI is reset
-            resetUIToZero();
+            await resetUIToZero();
           }
         }
         
@@ -135,7 +135,7 @@
           
           // if surveyCompleted was true and is now false/undefined, data was reset
           if (oldValue === true && (newValue === false || newValue === undefined)) {
-            resetUIToZero();
+            await resetUIToZero();
           }
         }
       }
@@ -2003,7 +2003,7 @@
       
       // ⛔ Never update if survey not completed - reset UI and return
       if (!data.surveyCompleted) {
-        resetUIToZero();
+        await resetUIToZero();
         return;
       }
       
