@@ -117,65 +117,40 @@
         }
         
         // handle data reset (surveyCompleted removed or set to false)
-        if (changes.surveyCompleted && !changes.surveyCompleted.newValue === false) {
-          // data was reset, hide UI elements and reset display
-          if (squareElement) {
-            squareElement.style.display = 'none';
-            // reset the display values
-            const countEl = squareElement.querySelector('.query-count');
-            const usageEl = squareElement.querySelector('.water-usage');
-            if (countEl) {
-              countEl.innerHTML = '0 <span class="suffix">queries</span>';
+        if (changes.surveyCompleted) {
+          const newValue = changes.surveyCompleted.newValue;
+          const oldValue = changes.surveyCompleted.oldValue;
+          
+          // if surveyCompleted was true and is now false/undefined, data was reset
+          if (oldValue === true && (newValue === false || newValue === undefined)) {
+            // data was reset, hide UI elements and reset display
+            if (squareElement) {
+              squareElement.style.display = 'none';
+              // reset the display values
+              const countEl = squareElement.querySelector('.query-count');
+              const usageEl = squareElement.querySelector('.water-usage');
+              if (countEl) {
+                countEl.innerHTML = '0 <span class="suffix">queries</span>';
+              }
+              if (usageEl) {
+                usageEl.innerHTML = '0 <span class="suffix">ml</span>';
+              }
             }
-            if (usageEl) {
-              usageEl.innerHTML = '0 <span class="suffix">ml</span>';
+            if (bottleElement) {
+              const container = document.querySelector('.water-bottle-container');
+              if (container) {
+                container.style.display = 'none';
+              }
+              // reset bottle fill
+              const waterFill = bottleElement.querySelector('.water-fill');
+              if (waterFill) {
+                waterFill.style.height = '0%';
+              }
             }
+            // reset local variables
+            queryCount = 0;
+            totalWaterUsage = 0;
           }
-          if (bottleElement) {
-            const container = document.querySelector('.water-bottle-container');
-            if (container) {
-              container.style.display = 'none';
-            }
-            // reset bottle fill
-            const waterFill = bottleElement.querySelector('.water-fill');
-            if (waterFill) {
-              waterFill.style.height = '0%';
-            }
-          }
-          // reset local variables
-          queryCount = 0;
-          totalWaterUsage = 0;
-        }
-        
-        // also check if surveyCompleted was explicitly removed (undefined)
-        if (changes.surveyCompleted && changes.surveyCompleted.oldValue && !changes.surveyCompleted.newValue) {
-          // data was reset, hide UI elements
-          if (squareElement) {
-            squareElement.style.display = 'none';
-            // reset the display values
-            const countEl = squareElement.querySelector('.query-count');
-            const usageEl = squareElement.querySelector('.water-usage');
-            if (countEl) {
-              countEl.innerHTML = '0 <span class="suffix">queries</span>';
-            }
-            if (usageEl) {
-              usageEl.innerHTML = '0 <span class="suffix">ml</span>';
-            }
-          }
-          if (bottleElement) {
-            const container = document.querySelector('.water-bottle-container');
-            if (container) {
-              container.style.display = 'none';
-            }
-            // reset bottle fill
-            const waterFill = bottleElement.querySelector('.water-fill');
-            if (waterFill) {
-              waterFill.style.height = '0%';
-            }
-          }
-          // reset local variables
-          queryCount = 0;
-          totalWaterUsage = 0;
         }
       }
     });
