@@ -1449,13 +1449,29 @@
     queryCount = queries.length;
     totalWaterUsage = dailyUsage;
     
+    // calculate rolling average from daily history (last 7 days if available, otherwise all history)
+    let averageUsage = 0;
+    if (dailyHistory.length > 0) {
+      const recentHistory = dailyHistory.slice(-7); // last 7 days
+      const totalRecentUsage = recentHistory.reduce((sum, day) => sum + day.usage, 0);
+      averageUsage = totalRecentUsage / recentHistory.length;
+    } else if (dailyUsage > 0) {
+      // if no history yet, use current day as starting point
+      averageUsage = dailyUsage;
+    }
+    
+    // update userData with calculated average and history
+    userData.averageUsage = Math.round(averageUsage * 100) / 100; // round to 2 decimal places
+    userData.dailyHistory = dailyHistory;
+    
     // save to storage
     try {
       await chrome.storage.local.set({
         dailyUsage,
         weeklyUsage: queries.reduce((sum, q) => sum + q.waterUsage, 0),
         totalUsage,
-        queries
+        queries,
+        userData: userData
       });
       
       console.log('💧 Waterer: Updated storage', { dailyUsage, queryCount, totalWaterUsage, queriesCount: queries.length });
