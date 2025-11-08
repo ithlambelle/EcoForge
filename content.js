@@ -1487,7 +1487,7 @@
     }
     
     // update UI after storage is saved
-    updateSquareDisplay();
+    await updateSquareDisplay();
     await updateBottleDisplay();
     
     // send to background for Supabase sync (with error handling)
@@ -2028,7 +2028,7 @@
       
       queryCount = data.queries?.length || 0;
       totalWaterUsage = data.dailyUsage || 0;
-      updateSquareDisplay();
+      await updateSquareDisplay();
       await updateBottleDisplay();
     } catch (error) {
       // handle extension context invalidated errors
