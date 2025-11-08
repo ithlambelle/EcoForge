@@ -1313,22 +1313,64 @@
       
       messageElement.classList.add('positive');
       
-      // prioritize most impactful messages
+      // prioritize most impactful messages with diverse variations
+      const positiveMessages = {
+        children3plus: [
+          `🎉 You saved a day's worth of water for ${children} children today! Your AI usage choices are helping those in need.`,
+          `🎉 ${children} children could drink clean water thanks to your mindful AI usage today!`,
+          `🎉 Your sustainable choices provided a day's water for ${children} children in need!`
+        ],
+        children: [
+          `💧 You saved a day's worth of water for ${children} ${children === 1 ? 'child' : 'children'} today! Every drop counts.`,
+          `💧 ${children} ${children === 1 ? 'child' : 'children'} could have clean drinking water from your savings today!`,
+          `💧 Your reduced AI usage means ${children} ${children === 1 ? 'child' : 'children'} can stay hydrated today!`
+        ],
+        shelters: [
+          `🐾 You saved enough water for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} today! Your mindful AI usage helps animals in need.`,
+          `🐾 ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} could care for their animals with the water you saved!`,
+          `🐾 Your water savings could support ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} today!`
+        ],
+        adults: [
+          `👥 You saved enough water for ${adults} ${adults === 1 ? 'adult' : 'adults'} today!`,
+          `👥 ${adults} ${adults === 1 ? 'person' : 'people'} could stay hydrated thanks to your mindful AI usage!`,
+          `👥 Your sustainable choices provided daily water for ${adults} ${adults === 1 ? 'adult' : 'adults'} today!`
+        ],
+        dogs: [
+          `🐕 You saved enough water for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} today!`,
+          `🐕 ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} could stay healthy with the water you saved today!`,
+          `🐕 Your water savings could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day!`
+        ],
+        cats: [
+          `🐱 You saved enough water for ${cats} ${cats === 1 ? 'cat' : 'cats'} today!`,
+          `🐱 ${cats} ${cats === 1 ? 'cat' : 'cats'} could thrive on the water you conserved today!`,
+          `🐱 Your mindful AI usage saved enough water for ${cats} ${cats === 1 ? 'cat' : 'cats'}!`
+        ],
+        default: [
+          `💧 Great job staying below your average! Every small reduction helps those in need.`,
+          `💧 Your mindful AI usage is making a difference! Keep it up!`,
+          `💧 Every drop you save helps someone in need. Great work!`
+        ]
+      };
+      
+      // select random message from appropriate category
+      let message;
       if (children >= 3) {
-        messageElement.textContent = `🎉 You saved a day's worth of water for ${children} children today! Your AI usage choices are helping those in need.`;
+        message = positiveMessages.children3plus[Math.floor(Math.random() * positiveMessages.children3plus.length)];
       } else if (children > 0) {
-        messageElement.textContent = `💧 You saved a day's worth of water for ${children} ${children === 1 ? 'child' : 'children'} today! Every drop counts.`;
+        message = positiveMessages.children[Math.floor(Math.random() * positiveMessages.children.length)];
       } else if (shelters > 0) {
-        messageElement.textContent = `🐾 You saved enough water for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} today! Your mindful AI usage helps animals in need.`;
+        message = positiveMessages.shelters[Math.floor(Math.random() * positiveMessages.shelters.length)];
       } else if (adults > 0) {
-        messageElement.textContent = `👥 You saved enough water for ${adults} ${adults === 1 ? 'adult' : 'adults'} today!`;
+        message = positiveMessages.adults[Math.floor(Math.random() * positiveMessages.adults.length)];
       } else if (dogs > 0) {
-        messageElement.textContent = `🐕 You saved enough water for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} today!`;
+        message = positiveMessages.dogs[Math.floor(Math.random() * positiveMessages.dogs.length)];
       } else if (cats > 0) {
-        messageElement.textContent = `🐱 You saved enough water for ${cats} ${cats === 1 ? 'cat' : 'cats'} today!`;
+        message = positiveMessages.cats[Math.floor(Math.random() * positiveMessages.cats.length)];
       } else {
-        messageElement.textContent = `💧 Great job staying below your average! Every small reduction helps those in need.`;
+        message = positiveMessages.default[Math.floor(Math.random() * positiveMessages.default.length)];
       }
+      
+      messageElement.textContent = message;
     } else if (difference < 0 && averageUsage > 0) {
       // negative - used more (above average)
       const excess = Math.abs(difference);
@@ -1339,19 +1381,57 @@
       
       messageElement.classList.add('negative');
       
+      // warnings with diverse variations
+      const negativeMessages = {
+        children3plus: [
+          `⚠️ That's enough water for ${children} children. Consider reducing your AI queries to help those in need.`,
+          `⚠️ Your excess usage could hydrate ${children} children. Your AI queries have a real humanitarian cost.`,
+          `⚠️ ${children} children could drink clean water with what you're using above average. Be more mindful.`
+        ],
+        children: [
+          `⚠️ That's enough water for ${children} ${children === 1 ? 'child' : 'children'}. Consider reducing your AI queries.`,
+          `⚠️ Your extra usage equals a day's water for ${children} ${children === 1 ? 'child' : 'children'}. Think about reducing AI queries.`,
+          `⚠️ ${children} ${children === 1 ? 'child' : 'children'} could stay hydrated with your excess water usage.`
+        ],
+        shelters: [
+          `⚠️ That's enough for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'}. Be mindful of your AI usage.`,
+          `⚠️ Your excess usage could support ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'}. Consider the impact.`,
+          `⚠️ ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} could use the water you're consuming above average.`
+        ],
+        adults: [
+          `⚠️ That's enough water for ${adults} ${adults === 1 ? 'adult' : 'adults'}. Consider reducing your AI queries.`,
+          `⚠️ Your excess usage equals daily water for ${adults} ${adults === 1 ? 'person' : 'people'}. Be more conscious.`,
+          `⚠️ ${adults} ${adults === 1 ? 'adult' : 'adults'} could stay hydrated with your extra water consumption.`
+        ],
+        dogs: [
+          `⚠️ That's enough for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'}. Be mindful of your AI usage.`,
+          `⚠️ Your excess usage could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day. Consider reducing queries.`,
+          `⚠️ ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} could thrive on the water you're using above average.`
+        ],
+        default: [
+          `⚠️ You're using more than your average. Consider reducing your AI queries to help conserve water.`,
+          `⚠️ Your excess usage has a real cost. Be mindful of your AI queries and their impact.`,
+          `⚠️ Consider reducing your AI usage - every drop saved helps someone in need.`
+        ]
+      };
+      
+      // select random message from appropriate category
+      let message;
       if (children >= 3) {
-        messageElement.textContent = `⚠️ That's enough water for ${children} children. Consider reducing your AI queries to help those in need.`;
+        message = negativeMessages.children3plus[Math.floor(Math.random() * negativeMessages.children3plus.length)];
       } else if (children > 0) {
-        messageElement.textContent = `⚠️ That's enough water for ${children} ${children === 1 ? 'child' : 'children'}. Consider reducing your AI queries.`;
+        message = negativeMessages.children[Math.floor(Math.random() * negativeMessages.children.length)];
       } else if (shelters > 0) {
-        messageElement.textContent = `⚠️ That's enough for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'}. Be mindful of your AI usage.`;
+        message = negativeMessages.shelters[Math.floor(Math.random() * negativeMessages.shelters.length)];
       } else if (adults > 0) {
-        messageElement.textContent = `⚠️ That's enough water for ${adults} ${adults === 1 ? 'adult' : 'adults'}. Consider reducing your AI queries.`;
+        message = negativeMessages.adults[Math.floor(Math.random() * negativeMessages.adults.length)];
       } else if (dogs > 0) {
-        messageElement.textContent = `⚠️ That's enough for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'}. Be mindful of your AI usage.`;
+        message = negativeMessages.dogs[Math.floor(Math.random() * negativeMessages.dogs.length)];
       } else {
-        messageElement.textContent = `⚠️ You're using more than your average. Consider reducing your AI queries to help conserve water.`;
+        message = negativeMessages.default[Math.floor(Math.random() * negativeMessages.default.length)];
       }
+      
+      messageElement.textContent = message;
     } else {
       messageElement.textContent = `💧 Query tracked! Total: ${formatWaterUsage(dailyUsage)}`;
     }
