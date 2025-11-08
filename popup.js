@@ -146,7 +146,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentUnit = units[(currentIndex + 1) % units.length];
     
     // save preference
-    chrome.storage.local.set({ waterUnit: currentUnit }).catch(() => {});
+    await chrome.storage.local.set({ waterUnit: currentUnit });
     
     updateUnitToggleButton();
     await updateDashboard();
