@@ -1726,7 +1726,7 @@
       
       messageElement.textContent = message;
     } else {
-      messageElement.textContent = `💧 Query tracked! Total: ${formatWaterUsage(dailyUsage)}`;
+      messageElement.textContent = `💧 Query tracked! Total: ${formatWaterUsage(dailyUsage, currentUnit)}`;
     }
     
     const bottleContainer = document.querySelector('.water-bottle-container');
@@ -1735,7 +1735,13 @@
       messageElement.style.left = '20px';
     }
     
-    document.body.appendChild(messageElement);
+    // ensure body exists and append message
+    if (document.body) {
+      document.body.appendChild(messageElement);
+      console.log('💧 Waterer: Message displayed', messageElement.textContent.substring(0, 50) + '...');
+    } else {
+      console.warn('💧 Waterer: document.body not available, cannot show message');
+    }
     
     // remove after 5 seconds
     setTimeout(() => {
