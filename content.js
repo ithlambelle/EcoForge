@@ -269,13 +269,13 @@
         suffix.className = 'suffix';
       }
       
-        // show bottles if >= 1 bottle, otherwise show ml
-        if (bottles >= 1) {
-          const bottleText = bottles === 1 ? 'bottle' : 'bottles';
-          suffix.textContent = ` ${bottleText} (${numberPart} ml)`;
-        } else {
-          suffix.textContent = ' ml';
-        }
+      // show bottles if >= 1 bottle, otherwise show ml
+      if (bottles >= 1) {
+        const bottleText = bottles === 1 ? 'bottle' : 'bottles';
+        suffix.textContent = ` ${bottleText} (${numberPart} ml)`;
+      } else {
+        suffix.textContent = ' ml';
+      }
       
       usageEl.innerHTML = bottles >= 1 ? `${bottles} ` : `${numberPart} `;
       usageEl.appendChild(suffix);
