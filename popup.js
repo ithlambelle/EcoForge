@@ -323,26 +323,41 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (resetBtn) {
     resetBtn.addEventListener('click', async () => {
       if (confirm('Are you sure you want to reset all your data? This will clear all your usage statistics and you will need to complete the survey again.')) {
-        // set resetting flag to prevent updates during reset
+        // Set resetting flag to prevent updates during reset
         await chrome.storage.local.set({ isResetting: true });
         
-        // clear all storage
+        // Clear all storage
         await chrome.storage.local.clear();
         
-        // reset survey form
+        // Re-seed baseline keys so UI has deterministic state
+        await chrome.storage.local.set({
+          surveyCompleted: false,
+          isResetting: false,
+          waterUnit: 'ml', // default
+          dailyUsage: 0,
+          weeklyUsage: 0,
+          totalUsage: 0,
+          queries: [],
+          userData: {
+            averageUsage: 0,
+            dailyHistory: []
+          }
+        });
+        
+        // Reset survey form
         surveyForm.reset();
         document.getElementById('usage-frequency').value = '';
         document.getElementById('water-awareness').value = '';
         document.getElementById('usage-purpose').value = '';
         document.getElementById('screen-time').value = '';
         
-        // hide survey water display if it exists
+        // Hide survey water display if it exists
         const surveyWaterDisplay = document.getElementById('survey-water-display');
         if (surveyWaterDisplay) {
           surveyWaterDisplay.remove();
         }
         
-        // reset dashboard stats to zero before hiding
+        // Reset dashboard stats to zero
         const zeroFormatted = await formatWaterUsage(0);
         document.getElementById('today-usage').textContent = zeroFormatted;
         document.getElementById('week-usage').textContent = zeroFormatted;
@@ -351,15 +366,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
         document.getElementById('comparison-message').className = 'comparison-card';
         
-        // show survey, hide dashboard
+        // Show survey, hide dashboard
         surveyContainer.style.display = 'block';
         dashboardContainer.classList.remove('show');
-        
-        // set surveyCompleted to false and clear resetting flag
-        await chrome.storage.local.set({
-          surveyCompleted: false,
-          isResetting: false
-        });
+        dashboardContainer.style.display = 'none';
         
         // notify content script to update/hide UI
         try {
