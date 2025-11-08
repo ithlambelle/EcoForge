@@ -45,6 +45,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
   
+  // listen for storage changes to update dashboard when data changes
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local') {
+      // if surveyCompleted is removed or set to false, reset dashboard
+      if (changes.surveyCompleted) {
+        const newValue = changes.surveyCompleted.newValue;
+        if (!newValue) {
+          // survey was reset, update dashboard to show zeros
+          document.getElementById('today-usage').textContent = formatWaterUsage(0);
+          document.getElementById('week-usage').textContent = formatWaterUsage(0);
+          document.getElementById('total-usage').textContent = formatWaterUsage(0);
+          document.getElementById('avg-usage').textContent = formatWaterUsage(0);
+          document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
+          document.getElementById('comparison-message').className = 'comparison-card';
+        }
+      }
+      // update dashboard when usage data changes
+      if (changes.dailyUsage || changes.weeklyUsage || changes.totalUsage || changes.userData) {
+        if (dashboardContainer.classList.contains('show')) {
+          updateDashboard();
+        }
+      }
+      // update unit if changed
+      if (changes.waterUnit) {
+        const newUnit = changes.waterUnit.newValue;
+        if (['ml', 'gallons', 'ounces'].includes(newUnit)) {
+          currentUnit = newUnit;
+          updateUnitToggleButton();
+          if (dashboardContainer.classList.contains('show')) {
+            updateDashboard();
+          }
+        }
+      }
+    }
+  });
+  
   // unit toggle button
   const unitToggleBtn = document.getElementById('unit-toggle-btn');
   if (unitToggleBtn) {
