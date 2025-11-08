@@ -1494,8 +1494,8 @@
       }
     }
     
-    // show message
-    showMessage(dailyUsage, data.userData?.averageUsage || 0);
+    // show message (use calculated average)
+    showMessage(dailyUsage, userData.averageUsage || 0);
   }
   
   // show reinforcement message
@@ -1509,6 +1509,19 @@
     
     const difference = averageUsage - dailyUsage;
     
+    // don't show messages if average is 0 (user hasn't established baseline yet)
+    if (!averageUsage || averageUsage === 0) {
+      messageElement.textContent = `💧 Query tracked! Building your usage baseline...`;
+      document.body.appendChild(messageElement);
+      setTimeout(() => {
+        if (messageElement) {
+          messageElement.remove();
+          messageElement = null;
+        }
+      }, 5000);
+      return;
+    }
+    
     // accurate water needs (from research data)
     const childDailyNeed = 2000; // ~2L per child per day
     const adultDailyNeed = 3000; // average: 3L per adult per day
@@ -1516,7 +1529,7 @@
     const catDailyNeed = 250;     // ~0.25L per 10lb cat per day
     const animalShelterDailyNeed = 50000; // ~50L per animal shelter per day
     
-    if (difference > 0 && averageUsage > 0) {
+    if (difference > 0) {
       // positive - saved water (below average)
       const excess = Math.abs(difference);
       const children = Math.floor(excess / childDailyNeed);
