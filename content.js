@@ -1526,8 +1526,11 @@
   
   // show reinforcement message
   async function showMessage(dailyUsage, averageUsage) {
+    console.log('💧 Waterer: showMessage called', { dailyUsage, averageUsage });
+    
     if (messageElement) {
       messageElement.remove();
+      messageElement = null;
     }
     
     messageElement = document.createElement('div');
@@ -1537,6 +1540,7 @@
     
     // show educational messages if average is 0 (user hasn't established baseline yet)
     if (!averageUsage || averageUsage === 0) {
+      console.log('💧 Waterer: Showing educational message (average is 0)');
       // calculate real-world impact for educational purposes
       const childDailyNeed = 2000; // ~2L per child per day
       const adultDailyNeed = 3000; // average: 3L per adult per day
@@ -1566,9 +1570,17 @@
       
       messageElement.textContent = message;
       messageElement.classList.add('positive'); // use positive styling for educational messages
-      document.body.appendChild(messageElement);
+      
+      // ensure body exists and append message
+      if (document.body) {
+        document.body.appendChild(messageElement);
+        console.log('💧 Waterer: Educational message displayed', message);
+      } else {
+        console.warn('💧 Waterer: document.body not available, cannot show message');
+      }
+      
       setTimeout(() => {
-        if (messageElement) {
+        if (messageElement && messageElement.parentNode) {
           messageElement.remove();
           messageElement = null;
         }
