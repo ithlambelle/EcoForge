@@ -382,6 +382,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
           // ignore errors
         }
+        
+        console.log('💧 DropQuery: Reset completed, state re-seeded');
       }
     });
   }
