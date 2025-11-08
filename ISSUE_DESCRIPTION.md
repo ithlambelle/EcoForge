@@ -1,4 +1,4 @@
-# Waterer Extension - Tracking Issue
+# DropQuery Extension - Tracking Issue
 
 ## Problem
 The extension successfully attaches event listeners to ChatGPT's textarea and send button, but `trackQuery()` is never called when messages are sent. The UI updates show `dailyUsage: 0` consistently.
@@ -16,8 +16,8 @@ The extension successfully attaches event listeners to ChatGPT's textarea and se
 - ❌ `dailyUsage` stays at 0
 
 ## Console Evidence
-- Logs show: "💧 Waterer: Attached tracking to textarea" and "💧 Waterer: Attached tracking to button"
-- But NO logs for: "💧 Waterer: Enter key pressed" or "💧 Waterer: Send button clicked"
+- Logs show: "💧 DropQuery: Attached tracking to textarea" and "💧 DropQuery: Attached tracking to button"
+- But NO logs for: "💧 DropQuery: Enter key pressed" or "💧 DropQuery: Send button clicked"
 - This suggests ChatGPT is preventing the events from reaching our listeners, or the events are being handled differently
 
 ## Current Detection Methods

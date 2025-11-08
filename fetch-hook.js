@@ -13,19 +13,19 @@
       const looksLikeGoogleAI = method === 'POST' && (/generativelanguage\.googleapis\.com/.test(url) || /\/v1\/models/.test(url) || /gemini/.test(url) || /ai\.google\.dev/.test(url));
       
       if (looksLikeChatGPT) {
-        console.log('💧 Waterer [page]: Detected POST to conversation endpoint', url);
+        console.log('💧 DropQuery [page]: Detected POST to conversation endpoint', url);
         window.postMessage({ type: 'waterer:send-start', url: url, model: 'chatgpt' }, '*');
       } else if (looksLikeGoogleAI) {
-        console.log('💧 Waterer [page]: Detected Google AI/Gemini request', url);
+        console.log('💧 DropQuery [page]: Detected Google AI/Gemini request', url);
         window.postMessage({ type: 'waterer:send-start', url: url, model: 'gemini' }, '*');
       }
       
       const resp = await _fetch.apply(this, arguments);
       if (looksLikeChatGPT && resp.ok) {
-        console.log('💧 Waterer [page]: Conversation POST succeeded');
+        console.log('💧 DropQuery [page]: Conversation POST succeeded');
         window.postMessage({ type: 'waterer:send-ok', url: url, model: 'chatgpt' }, '*');
       } else if (looksLikeGoogleAI && resp.ok) {
-        console.log('💧 Waterer [page]: Google AI request succeeded');
+        console.log('💧 DropQuery [page]: Google AI request succeeded');
         window.postMessage({ type: 'waterer:send-ok', url: url, model: 'gemini' }, '*');
       }
       return resp;
@@ -42,13 +42,13 @@
       const looksLikeGoogleAI = /generativelanguage\.googleapis\.com/.test(url) || /\/v1\/models/.test(url) || /gemini/.test(url) || /ai\.google\.dev/.test(url);
       
       if (looksLikeChatGPT) {
-        console.log('💧 Waterer [page]: Detected sendBeacon to conversation endpoint', url);
+        console.log('💧 DropQuery [page]: Detected sendBeacon to conversation endpoint', url);
         window.postMessage({ type: 'waterer:send-start', url: url, model: 'chatgpt' }, '*');
         setTimeout(() => {
           window.postMessage({ type: 'waterer:send-ok', url: url, model: 'chatgpt' }, '*');
         }, 100);
       } else if (looksLikeGoogleAI) {
-        console.log('💧 Waterer [page]: Detected sendBeacon to Google AI', url);
+        console.log('💧 DropQuery [page]: Detected sendBeacon to Google AI', url);
         window.postMessage({ type: 'waterer:send-start', url: url, model: 'gemini' }, '*');
         setTimeout(() => {
           window.postMessage({ type: 'waterer:send-ok', url: url, model: 'gemini' }, '*');

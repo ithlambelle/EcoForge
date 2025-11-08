@@ -1,7 +1,7 @@
 #!/bin/bash
-# test-extension.sh - validation and testing script for Waterer extension
+# test-extension.sh - validation and testing script for DropQuery extension
 
-echo "🧪 Testing Waterer Chrome Extension"
+echo "🧪 Testing DropQuery Chrome Extension"
 echo "===================================="
 echo ""
 

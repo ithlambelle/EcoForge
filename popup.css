@@ -4,19 +4,27 @@
   box-sizing: border-box;
 }
 
+:root {
+  --waterer-font: 'Space Grotesk', 'Inter', 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+  --waterer-blue-900: #0b2b7a;
+  --waterer-blue-800: #0d47a1;
+  --waterer-blue-700: #1565c0;
+  --waterer-blue-500: #1e88e5;
+  --waterer-blue-300: #64b5f6;
+}
+
 body {
   width: 400px;
   min-height: 500px;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
-  background: linear-gradient(135deg, 
-    rgba(25, 118, 210, 0.98) 0%, 
-    rgba(33, 150, 243, 0.95) 20%,
-    rgba(21, 101, 192, 0.95) 40%,
-    rgba(33, 150, 243, 0.98) 60%,
-    rgba(25, 118, 210, 0.95) 80%,
-    rgba(33, 150, 243, 0.98) 100%);
+  font-family: var(--waterer-font);
+  background: linear-gradient(145deg,
+    rgba(11, 43, 122, 0.98) 0%,
+    rgba(13, 71, 161, 0.96) 25%,
+    rgba(21, 101, 192, 0.95) 50%,
+    rgba(30, 136, 229, 0.95) 75%,
+    rgba(41, 182, 246, 0.92) 100%);
   background-attachment: fixed;
-  color: #004d40;
+  color: #0b2a46;
   position: relative;
   overflow-x: hidden;
 }
@@ -61,15 +69,15 @@ body::before {
 }
 
 .survey-container, .dashboard-container {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(240, 255, 255, 0.85) 100%);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.95) 0%, rgba(227, 242, 253, 0.9) 50%, rgba(214, 234, 248, 0.88) 100%);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1.5px solid rgba(255, 255, 255, 0.5);
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
   border-radius: 16px;
   padding: 20px;
-  box-shadow: 0 8px 32px rgba(0, 188, 212, 0.2),
-              0 2px 8px rgba(0, 0, 0, 0.1),
-              inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: 0 12px 32px rgba(13, 71, 161, 0.2),
+              0 2px 8px rgba(0, 0, 0, 0.12),
+              inset 0 1px 0 rgba(255, 255, 255, 0.7);
   position: relative;
   z-index: 1;
 }
@@ -100,29 +108,29 @@ body::before {
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border: 2px solid rgba(0, 188, 212, 0.3);
+  border: 2px solid rgba(30, 136, 229, 0.35);
   border-radius: 10px;
   font-size: 14px;
-  color: #004d40;
+  color: #0a3158;
   transition: border-color 0.3s, background 0.3s, box-shadow 0.3s;
 }
 
 .question select:focus,
 .question input:focus {
   outline: none;
-  border-color: rgba(0, 188, 212, 0.6);
+  border-color: rgba(30, 136, 229, 0.65);
   background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 0 0 3px rgba(0, 188, 212, 0.1);
+  box-shadow: 0 0 0 3px rgba(30, 136, 229, 0.2);
 }
 
 .submit-btn {
   width: 100%;
   padding: 12px;
-  background: linear-gradient(135deg, rgba(0, 188, 212, 0.9) 0%, rgba(0, 150, 136, 0.9) 50%, rgba(33, 150, 243, 0.9) 100%);
+  background: linear-gradient(135deg, rgba(13, 71, 161, 0.95) 0%, rgba(21, 101, 192, 0.95) 40%, rgba(33, 150, 243, 0.95) 100%);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   color: white;
-  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  border: 1.5px solid rgba(255, 255, 255, 0.5);
   border-radius: 12px;
   font-size: 16px;
   font-weight: 600;
@@ -130,16 +138,16 @@ body::before {
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
               box-shadow 0.2s,
               background 0.2s;
-  box-shadow: 0 4px 16px rgba(0, 188, 212, 0.3),
+  box-shadow: 0 4px 16px rgba(13, 71, 161, 0.35),
               inset 0 1px 0 rgba(255, 255, 255, 0.3);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .submit-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 188, 212, 0.4),
+  box-shadow: 0 6px 20px rgba(13, 71, 161, 0.45),
               inset 0 1px 0 rgba(255, 255, 255, 0.4);
-  background: linear-gradient(135deg, rgba(0, 188, 212, 1) 0%, rgba(0, 150, 136, 1) 50%, rgba(33, 150, 243, 1) 100%);
+  background: linear-gradient(135deg, rgba(11, 61, 142, 1) 0%, rgba(21, 101, 192, 1) 45%, rgba(66, 165, 245, 1) 100%);
 }
 
 .stats-grid {
@@ -150,15 +158,15 @@ body::before {
 }
 
 .stat-card {
-  background: linear-gradient(135deg, rgba(0, 188, 212, 0.3) 0%, rgba(0, 150, 136, 0.35) 50%, rgba(33, 150, 243, 0.3) 100%);
+  background: linear-gradient(140deg, rgba(13, 71, 161, 0.22) 0%, rgba(21, 101, 192, 0.26) 50%, rgba(66, 165, 245, 0.25) 100%);
   backdrop-filter: blur(15px) saturate(180%);
   -webkit-backdrop-filter: blur(15px) saturate(180%);
-  border: 1.5px solid rgba(255, 255, 255, 0.4);
-  color: #004d40;
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  color: #0b2a46;
   padding: 15px;
   border-radius: 12px;
   text-align: center;
-  box-shadow: 0 4px 16px rgba(0, 188, 212, 0.15),
+  box-shadow: 0 4px 16px rgba(13, 71, 161, 0.18),
               inset 0 1px 0 rgba(255, 255, 255, 0.5);
   transition: transform 0.2s, box-shadow 0.2s;
   position: relative;
@@ -179,7 +187,7 @@ body::before {
 
 .stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 188, 212, 0.25),
+  box-shadow: 0 6px 20px rgba(13, 71, 161, 0.3),
               inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
@@ -222,6 +230,13 @@ body::before {
   background: linear-gradient(135deg, rgba(255, 235, 238, 0.7) 0%, rgba(255, 205, 210, 0.6) 100%);
 }
 
+.comparison-card.caution {
+  border-left-color: rgba(255, 183, 77, 0.85);
+  background: linear-gradient(135deg, rgba(255, 249, 196, 0.8) 0%, rgba(255, 224, 178, 0.7) 100%);
+  box-shadow: 0 4px 16px rgba(255, 183, 77, 0.25),
+              inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
 #comparison-text {
   font-size: 14px;
   line-height: 1.5;
@@ -255,16 +270,16 @@ body::before {
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border: 2px solid rgba(0, 188, 212, 0.3);
+  border: 2px solid rgba(30, 136, 229, 0.35);
   border-radius: 8px;
   font-size: 14px;
-  color: #004d40;
+  color: #0a3158;
   transition: border-color 0.3s, background 0.3s;
 }
 
 .setting-item select:focus {
   outline: none;
-  border-color: rgba(0, 188, 212, 0.6);
+  border-color: rgba(30, 136, 229, 0.65);
   background: rgba(255, 255, 255, 0.9);
 }
 
@@ -326,4 +341,3 @@ body::before {
   margin-left: 8px;
   font-style: italic;
 }
-

@@ -25,7 +25,7 @@ All tests passed:
 
 ## First Use
 
-1. **Click the extension icon** in Chrome toolbar (💧 Waterer)
+1. **Click the extension icon** in Chrome toolbar (💧 DropQuery)
 2. **Complete the survey**:
    - How often do you use ChatGPT/Gemini? → Select "Every day"
    - Water awareness? → Select "Frequently"

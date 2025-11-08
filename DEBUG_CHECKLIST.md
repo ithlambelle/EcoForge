@@ -4,7 +4,7 @@
 
 ### 1. Reload Extension
 - Go to `chrome://extensions/`
-- Find "DropQuery" (or "Waterer")
+- Find "DropQuery" (or "DropQuery")
 - Click the **reload** icon (circular arrow)
 - **Close the popup if it's open**
 - **Reopen the popup** (click extension icon)

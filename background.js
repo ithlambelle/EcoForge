@@ -227,7 +227,7 @@ async function checkNotifications() {
         chrome.notifications.create({
           type: 'basic',
           iconUrl: 'icons/icon48.png',
-          title: 'Waterer - Usage Summary',
+          title: 'DropQuery - Usage Summary',
           message: message
         });
       } catch (error) {

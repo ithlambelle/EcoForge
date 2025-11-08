@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Simple icon generator for Waterer extension"""
+"""Simple icon generator for DropQuery extension"""
 from PIL import Image, ImageDraw
 import os
 

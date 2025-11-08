@@ -11,38 +11,76 @@
   let isDragging = false;
   let dragOffset = { x: 0, y: 0 };
   let currentUnit = 'ml'; // 'ml', 'gallons', 'ounces'
+
+  // keep popup + content script displays in sync with storage changes
+  chrome.storage.onChanged.addListener(async (changes, areaName) => {
+    if (areaName !== 'local') return;
+    try {
+      if (changes.waterUnit) {
+        const newUnit = changes.waterUnit.newValue;
+        if (['ml', 'gallons', 'ounces'].includes(newUnit)) {
+          currentUnit = newUnit;
+          await updateSquareDisplay();
+          await updateBottleDisplay();
+        }
+      }
+      
+      if (changes.isResetting) {
+        const becameFalse = changes.isResetting.oldValue === true && changes.isResetting.newValue === false;
+        if (becameFalse) {
+          queryCount = 0;
+          totalWaterUsage = 0;
+          await resetUIToZero();
+        }
+      }
+      
+      if (changes.surveyCompleted) {
+        const wasTrue = changes.surveyCompleted.oldValue === true;
+        const nowFalse = !changes.surveyCompleted.newValue;
+        if (wasTrue && nowFalse) {
+          queryCount = 0;
+          totalWaterUsage = 0;
+          await resetUIToZero({ hideUI: true });
+        }
+      }
+    } catch (error) {
+      if (!error.message?.includes('Extension context invalidated')) {
+        console.warn('DropQuery: storage change handling error', error);
+      }
+    }
+  });
   
   // dedupe/throttle to prevent overcounting
   let lastHit = 0;
   function safeTrackQuery(model = 'chatgpt', waterUsage = null) {
     const now = Date.now();
     if (now - lastHit < 1500) {
-      console.log('💧 Waterer: Throttled duplicate detection (within 1.5s)');
+      console.log('💧 DropQuery: Throttled duplicate detection (within 1.5s)');
       return; // 1.5s fuse
     }
     lastHit = now;
     if (waterUsage === null) {
       waterUsage = estimateQuerySize(model);
     }
-    console.log('💧 Waterer: Tracking query', { model, waterUsage: parseFloat(waterUsage.toFixed(4)) + 'ml' });
+    console.log('💧 DropQuery: Tracking query', { model, waterUsage: parseFloat(waterUsage.toFixed(4)) + 'ml' });
     trackQuery(model, waterUsage);
   }
   
   // initialize extension
   async function init() {
     try {
-      console.log('💧 Waterer: init() called');
+      console.log('💧 DropQuery: init() called');
       const data = await chrome.storage.local.get(['surveyCompleted', 'userData', 'dailyUsage']);
-      console.log('💧 Waterer: Storage data', { surveyCompleted: data.surveyCompleted, dailyUsage: data.dailyUsage });
+      console.log('💧 DropQuery: Storage data', { surveyCompleted: data.surveyCompleted, dailyUsage: data.dailyUsage });
       
       if (!data.surveyCompleted) {
-        console.log('💧 Waterer: Survey not completed, starting tracking anyway but not showing UI');
+        console.log('💧 DropQuery: Survey not completed, starting tracking anyway but not showing UI');
         // start tracking even without survey - we'll track but not show UI
         startTracking();
         return;
       }
       
-      console.log('💧 Waterer: Survey completed, creating UI and starting tracking');
+      console.log('💧 DropQuery: Survey completed, creating UI and starting tracking');
       // create UI elements
       createSquare();
       createWaterBottle();
@@ -63,10 +101,10 @@
       // handle extension context invalidated errors gracefully
       if (error.message?.includes('Extension context invalidated')) {
         // extension was reloaded, page needs refresh
-        console.info('Waterer: Extension was reloaded. Please refresh the page.');
+        console.info('DropQuery: Extension was reloaded. Please refresh the page.');
         return;
       }
-      console.error('Waterer: Initialization error', error);
+      console.error('DropQuery: Initialization error', error);
     }
   }
   
@@ -104,40 +142,6 @@
         currentUnit = result.waterUnit;
         updateSquareDisplay();
         updateBottleDisplay();
-      }
-    });
-    
-    // listen for storage changes (unit changes and data resets)
-    chrome.storage.onChanged.addListener(async (changes, areaName) => {
-      if (areaName === 'local') {
-        // handle unit changes
-        if (changes.waterUnit) {
-          const newUnit = changes.waterUnit.newValue;
-          if (['ml', 'gallons', 'ounces'].includes(newUnit)) {
-            currentUnit = newUnit;
-            await updateSquareDisplay();
-            await updateBottleDisplay();
-          }
-        }
-        
-        // handle resetting flag
-        if (changes.isResetting) {
-          if (changes.isResetting.newValue === false) {
-            // reset complete, ensure UI is reset
-            await resetUIToZero();
-          }
-        }
-        
-        // handle data reset (surveyCompleted removed or set to false)
-        if (changes.surveyCompleted) {
-          const newValue = changes.surveyCompleted.newValue;
-          const oldValue = changes.surveyCompleted.oldValue;
-          
-          // if surveyCompleted was true and is now false/undefined, data was reset
-          if (oldValue === true && (newValue === false || newValue === undefined)) {
-            await resetUIToZero();
-          }
-        }
       }
     });
     
@@ -267,7 +271,7 @@
     } catch (error) {
       // extension context might be invalidated - ignore
       if (!error.message?.includes('Extension context invalidated')) {
-        console.warn('Waterer: Error in onMouseUp', error);
+        console.warn('DropQuery: Error in onMouseUp', error);
       }
     }
   }
@@ -284,8 +288,17 @@
       
       // get latest data from storage to ensure accuracy, including unit preference
       const data = await chrome.storage.local.get(['dailyUsage', 'queries', 'waterUnit']);
-      const currentCount = data.queries?.length || queryCount;
-      const currentUsage = data.dailyUsage || totalWaterUsage;
+      const todayIso = new Date().toISOString().split('T')[0];
+      const todaysUsageFromQueries = Array.isArray(data.queries)
+        ? data.queries.reduce((sum, query) => {
+            const usage = typeof query.waterUsage === 'number' ? query.waterUsage : 0;
+            return query.date === todayIso ? sum + usage : sum;
+          }, 0)
+        : 0;
+      const currentUsage = (typeof data.dailyUsage === 'number' && !Number.isNaN(data.dailyUsage))
+        ? data.dailyUsage
+        : todaysUsageFromQueries;
+      const currentCount = Array.isArray(data.queries) ? data.queries.length : queryCount;
       
       // update currentUnit from storage if available
       if (data.waterUnit && ['ml', 'gallons', 'ounces'].includes(data.waterUnit)) {
@@ -372,7 +385,7 @@
     } catch (error) {
       // extension context invalidated - ignore silently
       if (!error.message?.includes('Extension context invalidated')) {
-        console.warn('Waterer: Error updating square display', error);
+        console.warn('DropQuery: Error updating square display', error);
       }
     }
   }
@@ -380,6 +393,22 @@
   // conversion constants (accurate US fluid measurements)
   const ML_TO_GALLON = 3785.41;  // 1 US gallon = 3785.41 ml
   const ML_TO_OUNCE = 29.5735;   // 1 US fluid ounce = 29.5735 ml
+  const DAILY_NEEDS = {
+    childMinOz: 16,
+    childMaxOz: 88,
+    childAvgOz: 40,
+    childMinMl: 16 * ML_TO_OUNCE,
+    childMaxMl: 88 * ML_TO_OUNCE,
+    childAvgMl: 40 * ML_TO_OUNCE,
+    adultMaleMl: 3700,
+    adultFemaleMl: 2700,
+    adultAvgMl: (3700 + 2700) / 2,
+    dogPerLbMl: ML_TO_OUNCE,
+    catPerLbMl: 0.8 * ML_TO_OUNCE,
+    defaultDogWeightLb: 50,
+    defaultCatWeightLb: 10,
+    animalShelterMl: 50000
+  };
   
   // convert ml to selected unit
   function convertToUnit(ml, unit) {
@@ -476,12 +505,20 @@
       
       if (!bottleElement) return;
       
-      const data = await chrome.storage.local.get(['userData', 'dailyUsage']);
-      const dailyUsage = data.dailyUsage || 0;
+      const data = await chrome.storage.local.get(['userData', 'dailyUsage', 'queries']);
       const userData = data.userData || {};
       const averageUsage = userData.averageUsage || 500;
+      const todayIso = new Date().toISOString().split('T')[0];
+      const todaysUsageFromQueries = Array.isArray(data.queries)
+        ? data.queries.reduce((sum, query) => {
+            const usage = typeof query.waterUsage === 'number' ? query.waterUsage : 0;
+            return query.date === todayIso ? sum + usage : sum;
+          }, 0)
+        : null;
+      const displayedUsage = todaysUsageFromQueries !== null ? todaysUsageFromQueries : (data.dailyUsage || 0);
+      const dailyUsage = displayedUsage || 0;
       
-      console.log('💧 Waterer: Updating bottle', { dailyUsage, averageUsage });
+      console.log('💧 DropQuery: Updating bottle', { dailyUsage, averageUsage });
       
       // determine bottle size (5ml for now, or gallon for very high usage)
       // use 5ml bottle for better visibility per query
@@ -524,7 +561,7 @@
         const oldHeight = parseFloat(waterFill.style.height) || 0;
         waterFill.style.height = `${fillPercentage}%`;
         
-        console.log('💧 Waterer: Bottle fill updated', { fillPercentage, dailyUsage, bottleCapacity });
+        console.log('💧 DropQuery: Bottle fill updated', { fillPercentage, dailyUsage, bottleCapacity });
         
         // add wave animation if there's actual usage and it changed
         if (dailyUsage > 0 && Math.abs(fillPercentage - oldHeight) > 1) {
@@ -535,7 +572,7 @@
     } catch (error) {
       // extension context invalidated - ignore silently
       if (!error.message?.includes('Extension context invalidated')) {
-        console.warn('Waterer: Error updating bottle display', error);
+        console.warn('DropQuery: Error updating bottle display', error);
       }
     }
   }
@@ -543,7 +580,7 @@
   // inject fetch hook into page context (most reliable method)
   // uses external script file to avoid CSP violations from inline scripts
   function injectFetchHook() {
-    console.log('💧 Waterer: Injecting fetch hook into page context');
+    console.log('💧 DropQuery: Injecting fetch hook into page context');
     try {
       // get extension ID dynamically
       const scriptUrl = chrome.runtime.getURL('fetch-hook.js');
@@ -551,7 +588,7 @@
       const s = document.createElement('script');
       s.src = scriptUrl;
       s.onerror = () => {
-        console.warn('💧 Waterer: Failed to load fetch-hook.js, falling back to inline injection');
+        console.warn('💧 DropQuery: Failed to load fetch-hook.js, falling back to inline injection');
         // fallback: try inline injection if external file fails
         const fallback = document.createElement('script');
         fallback.textContent = `
@@ -605,9 +642,9 @@
       };
       (document.head || document.documentElement).appendChild(s);
       s.remove();
-      console.log('💧 Waterer: Fetch hook injected');
+      console.log('💧 DropQuery: Fetch hook injected');
     } catch (e) {
-      console.error('💧 Waterer: Error injecting fetch hook', e);
+      console.error('💧 DropQuery: Error injecting fetch hook', e);
     }
   }
   
@@ -618,20 +655,20 @@
       const { type, model } = ev.data;
       if (type === 'waterer:send-start' || type === 'waterer:send-ok') {
         const detectedModel = model || 'chatgpt'; // default to chatgpt if not specified
-        console.log('💧 Waterer: Received message from page context', type, 'model:', detectedModel);
+        console.log('💧 DropQuery: Received message from page context', type, 'model:', detectedModel);
         try {
           safeTrackQuery(detectedModel);
         } catch (error) {
-          console.error('💧 Waterer: Error in safeTrackQuery', error);
+          console.error('💧 DropQuery: Error in safeTrackQuery', error);
         }
       }
     });
-    console.log('💧 Waterer: Message listener set up');
+    console.log('💧 DropQuery: Message listener set up');
   }
   
   // detect Google AI Overviews
   function observeGoogleAIOverview() {
-    console.log('💧 Waterer: Setting up Google AI Overview detection');
+    console.log('💧 DropQuery: Setting up Google AI Overview detection');
     const seen = new WeakSet();
     
     const checkForAIOverview = () => {
@@ -639,7 +676,7 @@
       const aiOverview = document.querySelector('[data-ved*="ai"], [aria-label*="AI Overview"], [class*="ai-overview"], [id*="ai-overview"]');
       if (aiOverview && !seen.has(aiOverview)) {
         seen.add(aiOverview);
-        console.log('💧 Waterer: Detected Google AI Overview');
+        console.log('💧 DropQuery: Detected Google AI Overview');
         // track as a Google/Gemini query
         safeTrackQuery('gemini');
       }
@@ -652,7 +689,7 @@
       
       if (aiOverviewText && !seen.has(aiOverviewText)) {
         seen.add(aiOverviewText);
-        console.log('💧 Waterer: Detected AI Overview text indicator');
+        console.log('💧 DropQuery: Detected AI Overview text indicator');
         safeTrackQuery('gemini');
       }
     };
@@ -673,7 +710,7 @@
   
   // observe DOM for new messages (fallback method)
   function observeSendsViaDOM() {
-    console.log('💧 Waterer: Setting up MutationObserver for message detection');
+    console.log('💧 DropQuery: Setting up MutationObserver for message detection');
     // resilient root selector: page often has a main chat scroll region
     const root = document.querySelector('[role="log"], [data-testid="conversation-turns"], main, [class*="conversation"]') || document.body;
     const seen = new WeakSet();
@@ -689,7 +726,7 @@
             if (isTurn) {
               seen.add(node);
               newUserOrAssistantNode = true;
-              console.log('💧 Waterer: Detected new conversation turn in DOM', node);
+              console.log('💧 DropQuery: Detected new conversation turn in DOM', node);
             }
           });
         }
@@ -700,19 +737,19 @@
           try {
             safeTrackQuery('chatgpt');
           } catch (error) {
-            console.error('💧 Waterer: Error tracking via DOM observer', error);
+            console.error('💧 DropQuery: Error tracking via DOM observer', error);
           }
         }, 500); // slight delay to let fetch hook fire first
       }
     });
     
     mo.observe(root, { childList: true, subtree: true });
-    console.log('💧 Waterer: MutationObserver active on', root);
+    console.log('💧 DropQuery: MutationObserver active on', root);
   }
   
   // start tracking AI queries
   function startTracking() {
-    console.log('💧 Waterer: startTracking() called on', window.location.hostname);
+    console.log('💧 DropQuery: startTracking() called on', window.location.hostname);
     
     // method 1: inject fetch hook into page context (most reliable)
     injectFetchHook();
@@ -734,7 +771,7 @@
       if (args[0]) {
         const url = args[0]?.toString() || '';
         if (checkForAIQuery(url, response)) {
-          console.log('💧 Waterer: Detected AI query in fetch (content script)', url);
+          console.log('💧 DropQuery: Detected AI query in fetch (content script)', url);
         }
       }
       return response;
@@ -755,7 +792,7 @@
       this.addEventListener('load', () => {
         if (xhr._method === 'POST' && xhr._url) {
           if (checkForAIQuery(xhr._url, xhr)) {
-            console.log('💧 Waterer: Detected AI query in XHR', xhr._url);
+            console.log('💧 DropQuery: Detected AI query in XHR', xhr._url);
           }
         }
       });
@@ -770,18 +807,18 @@
     
     // also set up direct ChatGPT detection
     const hostname = window.location.hostname;
-    console.log('💧 Waterer: Checking hostname for ChatGPT detection:', hostname);
+    console.log('💧 DropQuery: Checking hostname for ChatGPT detection:', hostname);
     if (hostname.includes('chatgpt.com') || hostname.includes('openai.com')) {
-      console.log('💧 Waterer: ChatGPT domain detected, setting up detection');
+      console.log('💧 DropQuery: ChatGPT domain detected, setting up detection');
       setupChatGPTDetection();
     } else {
-      console.log('💧 Waterer: Not a ChatGPT domain, using generic detection');
+      console.log('💧 DropQuery: Not a ChatGPT domain, using generic detection');
     }
   }
   
   // specific ChatGPT detection
   function setupChatGPTDetection() {
-    console.log('💧 Waterer: Setting up ChatGPT detection');
+    console.log('💧 DropQuery: Setting up ChatGPT detection');
     
     let trackedTextareas = new Set();
     let trackedButtons = new Set();
@@ -793,7 +830,7 @@
       
       trackedTextareas.add(textarea);
       textareaCount++;
-      console.log('💧 Waterer: Attached tracking to textarea #' + textareaCount, {
+      console.log('💧 DropQuery: Attached tracking to textarea #' + textareaCount, {
         id: textarea.id,
         className: textarea.className,
         placeholder: textarea.placeholder,
@@ -802,29 +839,29 @@
       
       // track on Enter key - use capture phase to catch it before ChatGPT
       textarea.addEventListener('keydown', (e) => {
-        console.log('💧 Waterer: Keydown event detected', { key: e.key, shiftKey: e.shiftKey, value: textarea.value?.substring(0, 30) });
+        console.log('💧 DropQuery: Keydown event detected', { key: e.key, shiftKey: e.shiftKey, value: textarea.value?.substring(0, 30) });
         if (e.key === 'Enter' && !e.shiftKey) {
           // capture text immediately before it might be cleared
           const text = textarea.value?.trim() || '';
-          console.log('💧 Waterer: Enter key pressed (no shift), text length:', text.length, 'text:', text.substring(0, 50));
+          console.log('💧 DropQuery: Enter key pressed (no shift), text length:', text.length, 'text:', text.substring(0, 50));
           if (text.length > 0) {
             // track immediately, don't wait
             try {
               if (isChromeContextValid()) {
                 const waterUsage = estimateQuerySizeFromText(text);
-                console.log('💧 Waterer: Calling trackQuery immediately', { model: 'chatgpt', waterUsage, textLength: text.length });
+                console.log('💧 DropQuery: Calling trackQuery immediately', { model: 'chatgpt', waterUsage, textLength: text.length });
                 trackQuery('chatgpt', waterUsage);
               } else {
                 // chrome runtime not available - silently skip (expected when extension context invalidated)
               }
             } catch (error) {
-              console.error('💧 Waterer: Error in trackQuery call', error);
+              console.error('💧 DropQuery: Error in trackQuery call', error);
               if (!error.message?.includes('Extension context invalidated')) {
-                console.warn('Waterer: Error tracking query', error);
+                console.warn('DropQuery: Error tracking query', error);
               }
             }
           } else {
-            console.log('💧 Waterer: Enter pressed but textarea is empty');
+            console.log('💧 DropQuery: Enter pressed but textarea is empty');
           }
         }
       }, true); // use capture phase
@@ -840,7 +877,7 @@
         if (e.inputType === 'insertLineBreak' || (e.data === null && e.inputType === 'insertText')) {
           const text = textarea.value?.trim() || '';
           if (text.length > 0) {
-            console.log('💧 Waterer: beforeinput detected, text length:', text.length);
+            console.log('💧 DropQuery: beforeinput detected, text length:', text.length);
           }
         }
       });
@@ -851,17 +888,17 @@
         form.setAttribute('data-waterer-tracked', 'true');
         form.addEventListener('submit', (e) => {
           const text = textarea.value?.trim() || textarea.textContent?.trim() || '';
-          console.log('💧 Waterer: Form submitted, text length:', text.length, 'text:', text.substring(0, 50));
+          console.log('💧 DropQuery: Form submitted, text length:', text.length, 'text:', text.substring(0, 50));
           if (text.length > 0) {
             try {
               if (isChromeContextValid()) {
-                console.log('💧 Waterer: Calling trackQuery from form submit', { model: 'chatgpt', textLength: text.length });
+                console.log('💧 DropQuery: Calling trackQuery from form submit', { model: 'chatgpt', textLength: text.length });
                 trackQuery('chatgpt', estimateQuerySizeFromText(text));
               }
             } catch (error) {
-              console.error('💧 Waterer: Error in trackQuery call from form', error);
+              console.error('💧 DropQuery: Error in trackQuery call from form', error);
               if (!error.message?.includes('Extension context invalidated')) {
-                console.warn('Waterer: Error tracking query', error);
+                console.warn('DropQuery: Error tracking query', error);
               }
             }
           }
@@ -883,32 +920,32 @@
             if (!trackedButtons.has(btn)) {
               trackedButtons.add(btn);
               buttonCount++;
-              console.log('💧 Waterer: Attached tracking to button #' + buttonCount, {
+              console.log('💧 DropQuery: Attached tracking to button #' + buttonCount, {
                 ariaLabel: btn.getAttribute('aria-label'),
                 dataTestId: btn.getAttribute('data-testid'),
                 className: btn.className
               });
               btn.addEventListener('click', (e) => {
-                console.log('💧 Waterer: Button click detected', { buttonId: btn.id, ariaLabel: btn.getAttribute('aria-label') });
+                console.log('💧 DropQuery: Button click detected', { buttonId: btn.id, ariaLabel: btn.getAttribute('aria-label') });
                 // try multiple ways to get the text
                 const text = textarea.value?.trim() || textarea.textContent?.trim() || '';
-                console.log('💧 Waterer: Send button clicked, text length:', text.length, 'text:', text.substring(0, 50));
+                console.log('💧 DropQuery: Send button clicked, text length:', text.length, 'text:', text.substring(0, 50));
                 if (text.length > 0) {
                   // track immediately
                   try {
                     if (isChromeContextValid()) {
                       const waterUsage = estimateQuerySizeFromText(text);
-                      console.log('💧 Waterer: Calling trackQuery from button immediately', { model: 'chatgpt', waterUsage, textLength: text.length });
+                      console.log('💧 DropQuery: Calling trackQuery from button immediately', { model: 'chatgpt', waterUsage, textLength: text.length });
                       trackQuery('chatgpt', waterUsage);
                     }
                   } catch (error) {
-                    console.error('💧 Waterer: Error in trackQuery call from button', error);
+                    console.error('💧 DropQuery: Error in trackQuery call from button', error);
                     if (!error.message?.includes('Extension context invalidated')) {
-                      console.warn('Waterer: Error tracking query', error);
+                      console.warn('DropQuery: Error tracking query', error);
                     }
                   }
                 } else {
-                  console.log('💧 Waterer: Button clicked but textarea is empty, trying to find text in DOM...');
+                  console.log('💧 DropQuery: Button clicked but textarea is empty, trying to find text in DOM...');
                   // try to find the text in the DOM
                   const form = textarea.closest('form');
                   if (form) {
@@ -916,7 +953,7 @@
                     for (const input of allInputs) {
                       const val = input.value?.trim() || input.textContent?.trim() || '';
                       if (val.length > 0) {
-                        console.log('💧 Waterer: Found text in another input:', val.substring(0, 50));
+                        console.log('💧 DropQuery: Found text in another input:', val.substring(0, 50));
                         trackQuery('chatgpt', estimateQuerySizeFromText(val));
                         break;
                       }
@@ -954,9 +991,9 @@
         }
         
         const textareas = document.querySelectorAll('textarea');
-        console.log('💧 Waterer: Found', textareas.length, 'textareas on page');
+        console.log('💧 DropQuery: Found', textareas.length, 'textareas on page');
         textareas.forEach((ta, index) => {
-          console.log('💧 Waterer: Textarea', index, {
+          console.log('💧 DropQuery: Textarea', index, {
             id: ta.id,
             className: ta.className,
             placeholder: ta.placeholder,
@@ -967,17 +1004,17 @@
         
         // also try to find send buttons
         const sendButtons = document.querySelectorAll('button[aria-label*="Send" i], button[data-testid*="send" i], button[title*="Send" i]');
-        console.log('💧 Waterer: Found', sendButtons.length, 'send buttons on page');
+        console.log('💧 DropQuery: Found', sendButtons.length, 'send buttons on page');
       } catch (error) {
-        console.error('💧 Waterer: Error in checkAndAttach', error);
+        console.error('💧 DropQuery: Error in checkAndAttach', error);
         if (!error.message?.includes('Extension context invalidated')) {
-          console.warn('Waterer: Error in checkAndAttach', error);
+          console.warn('DropQuery: Error in checkAndAttach', error);
         }
       }
     };
     
     // run immediately and multiple times
-    console.log('💧 Waterer: Starting periodic textarea detection');
+    console.log('💧 DropQuery: Starting periodic textarea detection');
     checkAndAttach();
     setTimeout(checkAndAttach, 500);
     setTimeout(checkAndAttach, 2000);
@@ -1058,7 +1095,7 @@
                       } catch (error) {
                         // extension context invalidated - ignore silently
                         if (!error.message?.includes('Extension context invalidated')) {
-                          console.warn('Waterer: Error tracking query', error);
+                          console.warn('DropQuery: Error tracking query', error);
                         }
                       }
                     }, 1000);
@@ -1392,15 +1429,15 @@
     }
     trackQuery.lastTrackTime = trackTime;
     
-    console.log('💧 Waterer: Tracking query', { model, waterUsage, timestamp: new Date().toISOString() });
+    console.log('💧 DropQuery: Tracking query', { model, waterUsage, timestamp: new Date().toISOString() });
     
     // save to storage first
     let data;
     try {
       data = await chrome.storage.local.get(['dailyUsage', 'weeklyUsage', 'totalUsage', 'queries', 'userData']);
-      console.log('💧 Waterer: Current storage data', data);
+      console.log('💧 DropQuery: Current storage data', data);
     } catch (error) {
-      console.error('💧 Waterer: Error reading storage', error);
+      console.error('💧 DropQuery: Error reading storage', error);
       return;
     }
     
@@ -1475,14 +1512,14 @@
         userData: userData
       });
       
-      console.log('💧 Waterer: Updated storage', { dailyUsage, queryCount, totalWaterUsage, queriesCount: queries.length });
+      console.log('💧 DropQuery: Updated storage', { dailyUsage, queryCount, totalWaterUsage, queriesCount: queries.length });
       
       // verify it was saved (format to avoid floating point precision issues)
       const verify = await chrome.storage.local.get(['dailyUsage']);
       const formattedDailyUsage = verify.dailyUsage ? parseFloat(verify.dailyUsage.toFixed(4)) : 0;
-      console.log('💧 Waterer: Verification - saved dailyUsage:', formattedDailyUsage);
+      console.log('💧 DropQuery: Verification - saved dailyUsage:', formattedDailyUsage);
     } catch (error) {
-      console.error('💧 Waterer: Error saving to storage', error);
+      console.error('💧 DropQuery: Error saving to storage', error);
       return;
     }
     
@@ -1502,13 +1539,13 @@
       }).catch((error) => {
         // ignore errors - extension might be reloading or background script not ready
         if (!error.message?.includes('Extension context invalidated')) {
-          console.warn('Waterer: Could not send to background', error);
+          console.warn('DropQuery: Could not send to background', error);
         }
       });
     } catch (error) {
       // extension context might be invalidated (extension was reloaded)
       if (!error.message?.includes('Extension context invalidated')) {
-        console.warn('Waterer: Error sending message', error);
+        console.warn('DropQuery: Error sending message', error);
       }
     }
     
@@ -1521,14 +1558,14 @@
         const latestUserData = latestData.userData || userData;
         showMessage(latestDailyUsage, latestUserData.averageUsage || 0);
       } catch (error) {
-        console.warn('💧 Waterer: Error showing message', error);
+        console.warn('💧 DropQuery: Error showing message', error);
       }
     }, 100);
   }
   
   // show reinforcement message
   async function showMessage(dailyUsage, averageUsage) {
-    console.log('💧 Waterer: showMessage called', { dailyUsage, averageUsage });
+    console.log('💧 DropQuery: showMessage called', { dailyUsage, averageUsage });
     
     if (messageElement) {
       messageElement.remove();
@@ -1539,16 +1576,18 @@
     messageElement.className = 'waterer-message';
     
     const difference = averageUsage - dailyUsage;
+    const adultDailyNeed = DAILY_NEEDS.adultAvgMl;
+    const adultMaleNeed = DAILY_NEEDS.adultMaleMl;
+    const adultFemaleNeed = DAILY_NEEDS.adultFemaleMl;
+    const childDailyNeed = DAILY_NEEDS.childAvgMl;
+    const childDailyNeedRange = `${DAILY_NEEDS.childMinOz}–${DAILY_NEEDS.childMaxOz} fl oz`;
+    const dogDailyNeed = DAILY_NEEDS.dogPerLbMl * DAILY_NEEDS.defaultDogWeightLb;
+    const catDailyNeed = DAILY_NEEDS.catPerLbMl * DAILY_NEEDS.defaultCatWeightLb;
+    const animalShelterDailyNeed = DAILY_NEEDS.animalShelterMl;
     
     // show educational messages if average is 0 (user hasn't established baseline yet)
     if (!averageUsage || averageUsage === 0) {
-      console.log('💧 Waterer: Showing educational message (average is 0)');
-      // calculate real-world impact for educational purposes
-      const childDailyNeed = 236.588; // 8 oz per child per day (1 oz = 29.5735 ml, 8 oz = 236.588 ml)
-      const adultDailyNeed = 3000; // average: 3L per adult per day
-      const dogDailyNeed = 1500;    // ~1.5L per 50lb dog per day
-      const catDailyNeed = 250;     // ~0.25L per 10lb cat per day
-      
+      console.log('💧 DropQuery: Showing educational message (average is 0)');
       const children = Math.floor(dailyUsage / childDailyNeed);
       const adults = Math.floor(dailyUsage / adultDailyNeed);
       const dogs = Math.floor(dailyUsage / dogDailyNeed);
@@ -1565,10 +1604,10 @@
         message = `Your ${formatted} today could provide clean drinking water for ${cats} ${cats === 1 ? 'cat' : 'cats'} for a day!`;
       } else if (children >= 1) {
         const formatted = await formatWaterUsage(dailyUsage, unitToUse);
-        message = `Your ${formatted} today could hydrate ${children} ${children === 1 ? 'child' : 'children'} for a day!`;
+        message = `Your ${formatted} today could hydrate ${children} ${children === 1 ? 'child' : 'children'} (kids need ${childDailyNeedRange} of plain water daily).`;
       } else if (adults >= 1) {
         const formatted = await formatWaterUsage(dailyUsage, unitToUse);
-        message = `Your ${formatted} today could provide daily water for ${adults} ${adults === 1 ? 'adult' : 'adults'}!`;
+        message = `Your ${formatted} today could cover ${adults} ${adults === 1 ? 'adult' : 'adults'}—men need 3.7L, women 2.7L every day.`;
       } else if (dogs >= 1) {
         const formatted = await formatWaterUsage(dailyUsage, unitToUse);
         message = `Your ${formatted} today could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day!`;
@@ -1576,7 +1615,7 @@
         // very small usage - show in terms of cats or small impact
         const catFraction = (dailyUsage / catDailyNeed).toFixed(2);
         const formatted = await formatWaterUsage(dailyUsage, unitToUse);
-        message = `Your ${formatted} today represents ${catFraction} of a cat's daily water needs. Every drop counts!`;
+        message = `Your ${formatted} today represents ${catFraction} of a cat's daily water needs (they need ~0.8 oz per lb). Every drop counts!`;
       }
       
       messageElement.textContent = message;
@@ -1585,9 +1624,9 @@
       // ensure body exists and append message
       if (document.body) {
         document.body.appendChild(messageElement);
-        console.log('💧 Waterer: Educational message displayed', message);
+        console.log('💧 DropQuery: Educational message displayed', message);
       } else {
-        console.warn('💧 Waterer: document.body not available, cannot show message');
+        console.warn('💧 DropQuery: document.body not available, cannot show message');
       }
       
       setTimeout(() => {
@@ -1598,13 +1637,6 @@
       }, 10000); // increased to 10 seconds
       return;
     }
-    
-    // accurate water needs (from research data)
-    const childDailyNeed = 236.588; // 8 oz per child per day (1 oz = 29.5735 ml, 8 oz = 236.588 ml)
-    const adultDailyNeed = 3000; // average: 3L per adult per day
-    const dogDailyNeed = 1500;    // ~1.5L per 50lb dog per day
-    const catDailyNeed = 250;     // ~0.25L per 10lb cat per day
-    const animalShelterDailyNeed = 50000; // ~50L per animal shelter per day
     
     if (difference > 0) {
       // positive - saved water (below average)
@@ -1620,39 +1652,33 @@
       // prioritize most impactful messages with diverse variations
       const positiveMessages = {
         children3plus: [
-          `You saved a day's worth of water for ${children} children today! Your AI usage choices are helping those in need.`,
-          `${children} children could drink clean water thanks to your mindful AI usage today!`,
-          `Your sustainable choices provided a day's water for ${children} children in need!`
+          `You kept enough water on standby for ${children} children (${childDailyNeedRange} each). Keep AI mindful!`,
+          `${children} children can stay hydrated because you stayed well under DropQuery's estimate.`
         ],
         children: [
-          `You saved a day's worth of water for ${children} ${children === 1 ? 'child' : 'children'} today! Every drop counts.`,
-          `${children} ${children === 1 ? 'child' : 'children'} could have clean drinking water from your savings today!`,
-          `Your reduced AI usage means ${children} ${children === 1 ? 'child' : 'children'} can stay hydrated today!`
+          `Nice! ${children} ${children === 1 ? 'child' : 'children'} can drink their ${childDailyNeedRange} today because of your savings.`,
+          `${children} ${children === 1 ? 'child' : 'children'} benefit whenever you hold back extra prompts.`
         ],
         shelters: [
-          `You saved enough water for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} today! Your mindful AI usage helps animals in need.`,
-          `${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} could care for their animals with the water you saved!`,
-          `Your water savings could support ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} today!`
+          `Your savings keep ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} stocked instead of feeding data-center cooling towers.`,
+          `${shelters} shelters’ worth of bowls stay full thanks to your restraint.`
         ],
         adults: [
-          `You saved enough water for ${adults} ${adults === 1 ? 'adult' : 'adults'} today!`,
-          `${adults} ${adults === 1 ? 'person' : 'people'} could stay hydrated thanks to your mindful AI usage!`,
-          `Your sustainable choices provided daily water for ${adults} ${adults === 1 ? 'adult' : 'adults'} today!`
+          `Enough for ${adults} ${adults === 1 ? 'adult' : 'adults'} (men need 3.7L/day, women 2.7L). Keep that streak.`,
+          `${adults} ${adults === 1 ? 'person stays' : 'people stay'} hydrated when you limit AI usage.`
         ],
         dogs: [
-          `You saved enough water for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} today!`,
-          `${dogs} ${dogs === 1 ? 'dog' : 'dogs'} could stay healthy with the water you saved today!`,
-          `Your water savings could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day!`
+          `That covers ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} drinking an ounce per pound.`,
+          `Water you saved is water ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} keep in their bowls.`
         ],
         cats: [
-          `You saved enough water for ${cats} ${cats === 1 ? 'cat' : 'cats'} today!`,
-          `${cats} ${cats === 1 ? 'cat' : 'cats'} could thrive on the water you conserved today!`,
-          `Your mindful AI usage saved enough water for ${cats} ${cats === 1 ? 'cat' : 'cats'}!`
+          `Great! ${cats} ${cats === 1 ? 'cat' : 'cats'} (0.8 oz per pound) get their fill instead of the server room.`,
+          `${cats} ${cats === 1 ? 'cat' : 'cats'} thrive when you stay below budget.`
         ],
         default: [
-          `Great job staying below your average! Every small reduction helps those in need.`,
-          `Your mindful AI usage is making a difference! Keep it up!`,
-          `Every drop you save helps someone in need. Great work!`
+          `You're well under budget—exactly how we keep rivers cool and communities supplied.`,
+          `Skipping just 1,000 AI searches saves ~0.085 gallons. You're scaling that conservation right now.`,
+          `Hold this course—avoiding 10,000 AI queries hydrates 200 adults for a full day.`
         ]
       };
       
@@ -1688,34 +1714,28 @@
       // warnings with diverse variations
       const negativeMessages = {
         children3plus: [
-          `That's enough water for ${children} children. Consider reducing your AI queries to help those in need.`,
-          `Your excess usage could hydrate ${children} children. Your AI queries have a real humanitarian cost.`,
-          `${children} children could drink clean water with what you're using above average. Be more mindful.`
+          `That's ${children} children missing their ${childDailyNeedRange} because the water evaporated cooling GPUs.`,
+          `Your extra usage competes directly with ${children} children’s hydration. Let’s put them first.`
         ],
         children: [
-          `That's enough water for ${children} ${children === 1 ? 'child' : 'children'}. Consider reducing your AI queries.`,
-          `Your extra usage equals a day's water for ${children} ${children === 1 ? 'child' : 'children'}. Think about reducing AI queries.`,
-          `${children} ${children === 1 ? 'child' : 'children'} could stay hydrated with your excess water usage.`
+          `Those extra prompts equal a day's water for ${children} ${children === 1 ? 'child' : 'children'} (they need ${childDailyNeedRange} of plain water).`,
+          `Dial back—${children} ${children === 1 ? 'child' : 'children'} could use that water more than the server hall.`
         ],
         shelters: [
-          `That's enough for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'}. Be mindful of your AI usage.`,
-          `Your excess usage could support ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'}. Consider the impact.`,
-          `${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} could use the water you're consuming above average.`
+          `Enough for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} is now trapped in cooling towers.`,
+          `Overages like this warm discharge streams and steal water from rescue operations.`
         ],
         adults: [
-          `That's enough water for ${adults} ${adults === 1 ? 'adult' : 'adults'}. Consider reducing your AI queries.`,
-          `Your excess usage equals daily water for ${adults} ${adults === 1 ? 'person' : 'people'}. Be more conscious.`,
-          `${adults} ${adults === 1 ? 'adult' : 'adults'} could stay hydrated with your extra water consumption.`
+          `That's what ${adults} ${adults === 1 ? 'adult' : 'adults'} drink daily (men need 3.7L, women 2.7L).`,
+          `Fossil-fueled power plants pull even more cooling water when you push past budget for ${adults} ${adults === 1 ? 'person' : 'people'}.`
         ],
         dogs: [
-          `That's enough for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'}. Be mindful of your AI usage.`,
-          `Your excess usage could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day. Consider reducing queries.`,
-          `${dogs} ${dogs === 1 ? 'dog' : 'dogs'} could thrive on the water you're using above average.`
+          `Dogs need 1 oz per pound. Your overage could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} instead of chips.`,
+          `Warm air from overworked data centers also heats their walks. Let's keep their bowls full instead.`
         ],
         default: [
-          `You're using more than your average. Consider reducing your AI queries to help conserve water.`,
-          `Your excess usage has a real cost. Be mindful of your AI queries and their impact.`,
-          `Consider reducing your AI usage - every drop saved helps someone in need.`
+          `AI already drove US data centers to 221B gallons in 2023. Extra prompts pile onto water scarcity, thermal pollution, and CO₂.`,
+          `Remember: chip fabs can burn 10M gallons of ultrapure water a day, and every surplus query nudges that demand up.`
         ]
       };
       
@@ -1753,9 +1773,9 @@
     // ensure body exists and append message
     if (document.body) {
       document.body.appendChild(messageElement);
-      console.log('💧 Waterer: Message displayed', messageElement.textContent.substring(0, 50) + '...');
+      console.log('💧 DropQuery: Message displayed', messageElement.textContent.substring(0, 50) + '...');
     } else {
-      console.warn('💧 Waterer: document.body not available, cannot show message');
+      console.warn('💧 DropQuery: document.body not available, cannot show message');
     }
     
     // remove after 10 seconds
@@ -1794,7 +1814,7 @@
     } catch (error) {
       // extension context invalidated - ignore silently
       if (!error.message?.includes('Extension context invalidated')) {
-        console.warn('Waterer: Error saving positions', error);
+        console.warn('DropQuery: Error saving positions', error);
       }
     }
   }
@@ -1825,7 +1845,7 @@
     } catch (error) {
       // extension context invalidated - ignore silently
       if (!error.message?.includes('Extension context invalidated')) {
-        console.warn('Waterer: Error loading positions', error);
+        console.warn('DropQuery: Error loading positions', error);
       }
     }
   }
@@ -1834,22 +1854,9 @@
   try {
     chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       if (message.type === 'resetData') {
-        // set resetting flag to prevent periodic updates
-        await chrome.storage.local.set({ isResetting: true });
-        
-        // clear all storage
-        await chrome.storage.local.clear();
-        
-        // reset UI immediately (now async)
-        await resetUIToZero();
-        
-        // set surveyCompleted to false and clear resetting flag
-        await chrome.storage.local.set({
-          surveyCompleted: false,
-          isResetting: false,
-          waterUnit: 'ml' // reset to default unit
-        });
-        
+        queryCount = 0;
+        totalWaterUsage = 0;
+        await resetUIToZero({ hideUI: true });
         sendResponse({ success: true });
         return true;
       }
@@ -1859,20 +1866,20 @@
   } catch (error) {
     // extension context might be invalidated
     if (!error.message?.includes('Extension context invalidated')) {
-      console.warn('Waterer: Error setting up message listener', error);
+      console.warn('DropQuery: Error setting up message listener', error);
     }
   }
   
   // expose manual test function for debugging
   window.watererTest = function() {
-    console.log('💧 Waterer: Manual test triggered');
+    console.log('💧 DropQuery: Manual test triggered');
     trackQuery('chatgpt', 50);
   };
   
   // also expose a function to check current state
   window.watererStatus = async function() {
     const data = await chrome.storage.local.get(['dailyUsage', 'queries', 'userData']);
-    console.log('💧 Waterer Status:', {
+    console.log('💧 DropQuery Status:', {
       dailyUsage: data.dailyUsage,
       queriesCount: data.queries?.length || 0,
       queries: data.queries,
@@ -1883,7 +1890,7 @@
   
   // expose function to manually trigger detection setup
   window.watererSetupDetection = function() {
-    console.log('💧 Waterer: Manually triggering detection setup');
+    console.log('💧 DropQuery: Manually triggering detection setup');
     if (window.location.hostname.includes('chatgpt.com') || window.location.hostname.includes('openai.com')) {
       setupChatGPTDetection();
     } else {
@@ -1894,7 +1901,7 @@
   // expose function to find and log all textareas
   window.watererFindTextareas = function() {
     const textareas = document.querySelectorAll('textarea');
-    console.log('💧 Waterer: Found', textareas.length, 'textareas:');
+    console.log('💧 DropQuery: Found', textareas.length, 'textareas:');
     textareas.forEach((ta, i) => {
       console.log(`  Textarea ${i}:`, {
         id: ta.id,
@@ -1910,11 +1917,11 @@
   
   // expose function to simulate a fake send (for testing)
   window.watererFakeSend = async function() {
-    console.log('💧 Waterer: Simulating fake send');
+    console.log('💧 DropQuery: Simulating fake send');
     try {
       await fetch('https://chatgpt.com/backend-api/conversation', { method: 'POST', body: '{}' });
     } catch (error) {
-      console.log('💧 Waterer: Fake send failed (expected)', error);
+      console.log('💧 DropQuery: Fake send failed (expected)', error);
       // trigger manually anyway for testing
       safeTrackQuery('chatgpt');
     }
@@ -1928,65 +1935,64 @@
   }
   
   // also log that script loaded
-  console.log('💧 Waterer: Content script loaded on', window.location.hostname);
+  console.log('💧 DropQuery: Content script loaded on', window.location.hostname);
   
   // centralized function to reset UI to zero
-  async function resetUIToZero() {
-    // reset local variables first
+  async function resetUIToZero(options = {}) {
+    const { hideUI = false } = options;
+    
     queryCount = 0;
     totalWaterUsage = 0;
     
+    let unitToUse = currentUnit || 'ml';
+    try {
+      const unitData = await chrome.storage.local.get(['waterUnit']);
+      if (unitData.waterUnit && ['ml', 'gallons', 'ounces'].includes(unitData.waterUnit)) {
+        unitToUse = unitData.waterUnit;
+        currentUnit = unitData.waterUnit;
+      }
+    } catch (error) {
+      if (!error.message?.includes('Extension context invalidated')) {
+        console.warn('DropQuery: Unable to load unit during reset', error);
+      }
+    }
+    
     if (squareElement) {
-      // hide square
-      squareElement.style.display = 'none';
+      squareElement.style.display = hideUI ? 'none' : '';
       
-      // reset query count
       const countEl = squareElement.querySelector('.query-count');
       if (countEl) {
         countEl.innerHTML = '0 <span class="suffix">queries</span>';
       }
       
-      // reset water usage - format with current unit
       const usageEl = squareElement.querySelector('.water-usage');
       if (usageEl) {
-        const unitData = await chrome.storage.local.get(['waterUnit']);
-        const unitToUse = unitData.waterUnit || currentUnit || 'ml';
         const formatted = await formatWaterUsage(0, unitToUse);
         const parts = formatted.split(' ');
         const numberPart = parts[0];
         const unitLabel = parts[1] || getUnitLabel(unitToUse);
         
-        // clear existing content
-        usageEl.innerHTML = '';
+        usageEl.innerHTML = `${numberPart}`;
         const suffix = document.createElement('span');
         suffix.className = 'suffix';
         suffix.textContent = ` ${unitLabel}`;
-        usageEl.innerHTML = `${numberPart}`;
         usageEl.appendChild(suffix);
-        
-        // remove ml-value if it exists
-        const mlValue = usageEl.querySelector('.ml-value');
-        if (mlValue) mlValue.remove();
       }
     }
     
+    const bottleContainer = document.querySelector('.water-bottle-container');
+    if (bottleContainer) {
+      bottleContainer.style.display = hideUI ? 'none' : '';
+    }
+    
     if (bottleElement) {
-      const container = document.querySelector('.water-bottle-container');
-      if (container) {
-        container.style.display = 'none';
-        // reset bottle fill
-        const waterFill = bottleElement.querySelector('.water-fill');
-        if (waterFill) {
-          waterFill.style.height = '0%';
-        }
-        // reset bottle label
-        const label = bottleElement.querySelector('.bottle-label');
-        if (label) {
-          const unitData = await chrome.storage.local.get(['waterUnit']);
-          const unitToUse = unitData.waterUnit || currentUnit || 'ml';
-          const formatted = await formatWaterUsage(0, unitToUse);
-          label.textContent = formatted;
-        }
+      const waterFill = bottleElement.querySelector('.water-fill');
+      if (waterFill) {
+        waterFill.style.height = '0%';
+      }
+      const label = bottleElement.querySelector('.bottle-label');
+      if (label) {
+        label.textContent = await formatWaterUsage(0, unitToUse);
       }
     }
   }
@@ -2003,7 +2009,7 @@
       
       // ⛔ Never update if survey not completed - reset UI and return
       if (!data.surveyCompleted) {
-        await resetUIToZero();
+        await resetUIToZero({ hideUI: true });
         return;
       }
       
@@ -2034,12 +2040,11 @@
       // handle extension context invalidated errors
       if (error.message?.includes('Extension context invalidated')) {
         // stop the interval if extension context is invalid
-        console.info('Waterer: Extension context invalidated. Please refresh the page.');
+        console.info('DropQuery: Extension context invalidated. Please refresh the page.');
         return;
       }
-      console.warn('Waterer: Error in periodic update', error);
+      console.warn('DropQuery: Error in periodic update', error);
     }
   }, 5000);
   
 })();
-

@@ -1,4 +1,4 @@
--- Supabase schema for Waterer extension
+-- Supabase schema for DropQuery extension
 -- Run these SQL commands in your Supabase SQL editor
 
 -- Users table: stores user survey data and average usage

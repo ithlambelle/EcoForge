@@ -1,4 +1,4 @@
-# Waterer - AI Water Usage Tracker
+# DropQuery - AI Water Usage Tracker
 
 A Chrome extension that tracks and visualizes water usage from AI model queries (ChatGPT, Gemini, etc.) with positive reinforcement to promote sustainable AI usage.
 
@@ -186,5 +186,5 @@ MIT License
 
 ## Inspiration
 
-Inspired by extensions like Opal (time tracking) and Grammarly (writing assistance), Waterer focuses on making invisible environmental impacts visible and actionable.
+Inspired by extensions like Opal (time tracking) and Grammarly (writing assistance), DropQuery focuses on making invisible environmental impacts visible and actionable.
 

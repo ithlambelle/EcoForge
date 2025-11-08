@@ -250,7 +250,7 @@ chrome.storage.local.clear(() => {
 ---
 
 ## Notes
-- Extension name changed from "Waterer" to "DropQuery"
+- Extension name changed from "DropQuery" to "DropQuery"
 - All console logs use "DropQuery" prefix
 - Debug logging is extensive to help identify issues
 - Storage listeners are set up to handle state changes in real-time

@@ -4,6 +4,57 @@
 let __isSubmitting = false;
 let __lastCommitId = null;
 
+// global unit helpers so popup + helpers share the same logic
+const ML_TO_GALLON = 3785.41;  // 1 US gallon = 3785.41 ml
+const ML_TO_OUNCE = 29.5735;   // 1 US fluid ounce = 29.5735 ml
+let currentUnit = 'ml';        // 'ml', 'gallons', 'ounces'
+
+const DAILY_NEEDS = {
+  childMinOz: 16,
+  childMaxOz: 88,
+  childAvgOz: 40,
+  childMinMl: 16 * ML_TO_OUNCE,
+  childMaxMl: 88 * ML_TO_OUNCE,
+  childAvgMl: 40 * ML_TO_OUNCE,
+  adultMaleMl: 3700,
+  adultFemaleMl: 2700,
+  adultAvgMl: (3700 + 2700) / 2,
+  dogPerLbMl: ML_TO_OUNCE,            // 1 oz per lb
+  catPerLbMl: 0.8 * ML_TO_OUNCE,      // avg 0.8 oz per lb
+  defaultDogWeightLb: 50,
+  defaultCatWeightLb: 10,
+  animalShelterMl: 50000,             // ~50L
+  villageMl: 500000                   // ~500L
+};
+
+function convertToUnit(ml, unit) {
+  switch(unit) {
+    case 'gallons':
+      return ml / ML_TO_GALLON;
+    case 'ounces':
+      return ml / ML_TO_OUNCE;
+    case 'ml':
+    default:
+      return ml;
+  }
+}
+
+function getUnitLabel(unit) {
+  switch(unit) {
+    case 'gallons':
+      return 'gal';
+    case 'ounces':
+      return 'oz';
+    case 'ml':
+    default:
+      return 'ml';
+  }
+}
+
+function isFiniteNumber(value) {
+  return typeof value === 'number' && !Number.isNaN(value);
+}
+
 function genId() {
   return (crypto?.randomUUID?.() || String(Date.now()) + Math.random());
 }
@@ -12,37 +63,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const surveyContainer = document.getElementById('survey-container');
   const dashboardContainer = document.getElementById('dashboard-container');
   const surveyForm = document.getElementById('survey-form');
-  
-  // unit conversion (shared with content.js)
-  let currentUnit = 'ml'; // 'ml', 'gallons', 'ounces'
-  const ML_TO_GALLON = 3785.41;  // 1 US gallon = 3785.41 ml
-  const ML_TO_OUNCE = 29.5735;   // 1 US fluid ounce = 29.5735 ml
-  
-  // convert ml to selected unit
-  function convertToUnit(ml, unit) {
-    switch(unit) {
-      case 'gallons':
-        return ml / ML_TO_GALLON;
-      case 'ounces':
-        return ml / ML_TO_OUNCE;
-      case 'ml':
-      default:
-        return ml;
-    }
-  }
-  
-  // get unit label
-  function getUnitLabel(unit) {
-    switch(unit) {
-      case 'gallons':
-        return 'gal';
-      case 'ounces':
-        return 'oz';
-      case 'ml':
-      default:
-        return 'ml';
-    }
-  }
   
   // load unit preference
   chrome.storage.local.get(['waterUnit'], async (result) => {
@@ -523,22 +543,43 @@ function showDashboard() {
 }
 
 async function updateDashboard() {
-  const data = await chrome.storage.local.get(['userData', 'dailyUsage', 'weeklyUsage', 'totalUsage']);
+  const data = await chrome.storage.local.get(['userData', 'dailyUsage', 'weeklyUsage', 'totalUsage', 'queries']);
   const userData = data.userData || {};
+  const normalized = normalizeUsageStats(data);
   
   // update stats (formatWaterUsage is now async)
-  document.getElementById('today-usage').textContent = await formatWaterUsage(data.dailyUsage || 0);
-  document.getElementById('week-usage').textContent = await formatWaterUsage(data.weeklyUsage || 0);
-  document.getElementById('total-usage').textContent = await formatWaterUsage(data.totalUsage || 0);
+  document.getElementById('today-usage').textContent = await formatWaterUsage(normalized.dailyUsage);
+  document.getElementById('week-usage').textContent = await formatWaterUsage(normalized.weeklyUsage);
+  document.getElementById('total-usage').textContent = await formatWaterUsage(normalized.totalUsage);
   document.getElementById('avg-usage').textContent = await formatWaterUsage(userData.averageUsage || 0);
   
   // update comparison message (this will now show random variations)
-  await updateComparisonMessage(data.dailyUsage || 0, userData.averageUsage || 0);
+  await updateComparisonMessage(normalized.dailyUsage, userData.averageUsage || 0);
   
   // also update periodically to show different messages
   setTimeout(async () => {
-    await updateComparisonMessage(data.dailyUsage || 0, userData.averageUsage || 0);
+    await updateComparisonMessage(normalized.dailyUsage, userData.averageUsage || 0);
   }, 5000);
+}
+
+function normalizeUsageStats(rawData) {
+  const queries = Array.isArray(rawData.queries) ? rawData.queries : [];
+  const today = new Date().toISOString().split('T')[0];
+  const computedDaily = queries.reduce((sum, query) => {
+    const usage = typeof query.waterUsage === 'number' ? query.waterUsage : 0;
+    return query.date === today ? sum + usage : sum;
+  }, 0);
+  const computedWeekly = queries.reduce((sum, query) => {
+    const usage = typeof query.waterUsage === 'number' ? query.waterUsage : 0;
+    return sum + usage;
+  }, 0);
+  
+  return {
+    queries,
+    dailyUsage: isFiniteNumber(rawData.dailyUsage) ? rawData.dailyUsage : computedDaily,
+    weeklyUsage: isFiniteNumber(rawData.weeklyUsage) ? rawData.weeklyUsage : computedWeekly,
+    totalUsage: isFiniteNumber(rawData.totalUsage) ? rawData.totalUsage : computedWeekly
+  };
 }
 
 // water usage per survey question (in ml)
@@ -578,7 +619,7 @@ function setupSurveyIncrements(currentUsage) {
           });
           
           await updateSurveyWaterDisplay(newUsage);
-          console.log(`💧 Waterer: Added ${parseFloat(usage.toFixed(4))}ml for answering ${id}`);
+          console.log(`💧 DropQuery: Added ${parseFloat(usage.toFixed(4))}ml for answering ${id}`);
         }
       });
     }
@@ -599,11 +640,11 @@ async function updateSurveyWaterDisplay(usage) {
   // formatWaterUsage is now async, so we need to await it
   const formatted = await formatWaterUsage(usage);
   display.innerHTML = `
-    <div style="font-size: 14px; color: #1976d2; font-weight: bold;">
-      Water used so far: <span id="survey-water-amount">${formatted}</span>
+    <div style="font-size: 14px; color: #0d47a1; font-weight: bold;">
+      Estimated water use: <span id="survey-water-amount">${formatted}</span>
     </div>
-    <div style="font-size: 11px; color: #666; margin-top: 5px;">
-      Each question you answer adds a small amount of water usage
+    <div style="font-size: 11px; color: #555; margin-top: 5px;">
+      Each answer helps DropQuery predict how much water today's AI sessions may need.
     </div>
   `;
 }
@@ -680,6 +721,15 @@ async function formatWaterUsage(ml, unit = null) {
 async function updateComparisonMessage(dailyUsage, averageUsage) {
   const comparisonCard = document.getElementById('comparison-message');
   const comparisonText = document.getElementById('comparison-text');
+  const adultDailyNeed = DAILY_NEEDS.adultAvgMl;
+  const adultMaleNeed = DAILY_NEEDS.adultMaleMl;
+  const adultFemaleNeed = DAILY_NEEDS.adultFemaleMl;
+  const childDailyNeed = DAILY_NEEDS.childAvgMl;
+  const childDailyNeedRange = `${DAILY_NEEDS.childMinOz}–${DAILY_NEEDS.childMaxOz} fl oz`;
+  const dogDailyNeed = DAILY_NEEDS.dogPerLbMl * DAILY_NEEDS.defaultDogWeightLb;
+  const catDailyNeed = DAILY_NEEDS.catPerLbMl * DAILY_NEEDS.defaultCatWeightLb;
+  const animalShelterDailyNeed = DAILY_NEEDS.animalShelterMl;
+  const villageDailyNeed = DAILY_NEEDS.villageMl;
   
   if (!averageUsage || averageUsage === 0) {
     if (dailyUsage === 0) {
@@ -730,77 +780,60 @@ async function updateComparisonMessage(dailyUsage, averageUsage) {
   }
   
   const difference = averageUsage - dailyUsage;
-  const percentage = ((difference / averageUsage) * 100).toFixed(1);
+  const percentDelta = averageUsage > 0 ? (difference / averageUsage) * 100 : 0;
+  const percentBelow = percentDelta > 0 ? percentDelta : 0;
+  const percentAbove = percentDelta < 0 ? Math.abs(percentDelta) : 0;
+  const usageRatio = averageUsage > 0 ? dailyUsage / averageUsage : 0;
   
-  // accurate water needs (from research data)
-  // Adult men: 3.7L/day = 3700ml, Adult women: 2.7L/day = 2700ml
-  // Child: 8 oz per day = 236.588 ml (1 oz = 29.5735 ml)
-  // 50lb dog: ~0.39 gallons = 1476ml, 10lb cat: ~0.07 gallons = 265ml
-  // Animal shelter: ~50-100L per day for multiple animals
-  const adultDailyNeed = 3000; // average: 3L per adult per day
-  const childDailyNeed = 236.588; // 8 oz per child per day (1 oz = 29.5735 ml, 8 oz = 236.588 ml)
-  const dogDailyNeed = 1500;    // ~1.5L per 50lb dog per day
-  const catDailyNeed = 250;     // ~0.25L per 10lb cat per day
-  const animalShelterDailyNeed = 50000; // ~50L per animal shelter per day
-  const villageDailyNeed = 500000; // ~500L for a small village per day
-  
-  if (difference > 0) {
-    // positive - saved water (below average)
-    const excess = Math.abs(difference);
-    const adults = Math.floor(excess / adultDailyNeed);
-    const children = Math.floor(excess / childDailyNeed);
-    const dogs = Math.floor(excess / dogDailyNeed);
-    const cats = Math.floor(excess / catDailyNeed);
-    const shelters = Math.floor(excess / animalShelterDailyNeed);
-    const villages = Math.floor(excess / villageDailyNeed);
+  if (difference > 0 && usageRatio <= 0.85) {
+    const saved = Math.abs(difference);
+    const adults = Math.floor(saved / adultDailyNeed);
+    const children = Math.floor(saved / childDailyNeed);
+    const dogs = Math.floor(saved / dogDailyNeed);
+    const cats = Math.floor(saved / catDailyNeed);
+    const shelters = Math.floor(saved / animalShelterDailyNeed);
+    const villages = Math.floor(saved / villageDailyNeed);
+    const percentText = percentBelow.toFixed(1);
     
     comparisonCard.className = 'comparison-card positive';
     
-    // prioritize most impactful messages with diverse variations
     const positiveMessages = {
       villages: [
-        `You saved enough water for ${villages} ${villages === 1 ? 'small village' : 'small villages'} today! Your sustainable choices make a global impact!`,
-        `Your water savings could sustain ${villages} ${villages === 1 ? 'village' : 'villages'} today! Amazing impact!`,
-        `${villages} ${villages === 1 ? 'village' : 'villages'} could thrive on the water you saved today!`
+        `You're ${percentText}% below today's DropQuery estimate. That's enough water for ${villages} ${villages === 1 ? 'small village' : 'small villages'}!`,
+        `${villages} ${villages === 1 ? 'village' : 'villages'} could drink because you stayed ${percentText}% under your target.`
       ],
       children3plus: [
-        `You saved a day's worth of water for ${children} children today! Your AI usage choices are helping those in need.`,
-        `${children} children could drink clean water thanks to your mindful AI usage today!`,
-        `Your sustainable choices provided a day's water for ${children} children in need!`
+        `Staying ${percentText}% below your estimate kept ${children} children hydrated today.`,
+        `Mindful prompts saved ${children} children's worth of water. Keep it up!`
       ],
       children: [
-        `You saved a day's worth of water for ${children} ${children === 1 ? 'child' : 'children'} today! Every drop counts.`,
-        `${children} ${children === 1 ? 'child' : 'children'} could have clean drinking water from your savings today!`,
-        `Your reduced AI usage means ${children} ${children === 1 ? 'child' : 'children'} can stay hydrated today!`
+        `You're ${percentText}% under budget. That's drinking water for ${children} ${children === 1 ? 'child' : 'children'}.`,
+        `${children} ${children === 1 ? 'child' : 'children'} benefit when you stay ${percentText}% below estimate.`
       ],
       shelters: [
-        `You saved enough water for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} today! Your mindful AI usage helps animals in need.`,
-        `${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} could care for their animals with the water you saved!`,
-        `Your water savings could support ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} today!`
+        `Saving ${percentText}% of your estimate keeps ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} running.`,
+        `Your efficiency preserved enough for ${shelters} ${shelters === 1 ? 'shelter' : 'shelters'} today.`
       ],
       adults: [
-        `You saved enough water for ${adults} ${adults === 1 ? 'adult' : 'adults'} today! That's ${percentage}% below your average.`,
-        `${adults} ${adults === 1 ? 'person' : 'people'} could stay hydrated thanks to your mindful AI usage!`,
-        `Your sustainable choices provided daily water for ${adults} ${adults === 1 ? 'adult' : 'adults'} today!`
+        `That's ${percentText}% below the estimate—enough for ${adults} ${adults === 1 ? 'adult' : 'adults'}.`,
+        `${adults} ${adults === 1 ? 'person' : 'people'} could hydrate with the water you saved today.`
       ],
       dogs: [
-        `You saved enough water for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} today! Your sustainable choices matter.`,
-        `${dogs} ${dogs === 1 ? 'dog' : 'dogs'} could stay healthy with the water you saved today!`,
-        `Your water savings could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day!`
+        `Mindful chatting saved ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} worth of water.`,
+        `${dogs} ${dogs === 1 ? 'dog' : 'dogs'} stay hydrated because you kept usage low.`
       ],
       cats: [
-        `You saved enough water for ${cats} ${cats === 1 ? 'cat' : 'cats'} today! Keep making mindful choices.`,
-        `${cats} ${cats === 1 ? 'cat' : 'cats'} could thrive on the water you conserved today!`,
-        `Your mindful AI usage saved enough water for ${cats} ${cats === 1 ? 'cat' : 'cats'}!`
+        `That's ${percentText}% below estimate—enough for ${cats} ${cats === 1 ? 'cat' : 'cats'}.`,
+        `${cats} ${cats === 1 ? 'cat' : 'cats'} drink thanks to your restraint.`
       ],
       default: [
-        `Great job staying below your average! Every small reduction helps those in need.`,
-        `Your mindful AI usage is making a difference! Keep it up!`,
-        `Every drop you save helps someone in need. Great work!`
+        `You're ${percentText}% below today's DropQuery estimate. Stellar conservation!`,
+        `Mindful AI use pays off—${percentText}% under budget today.`,
+        `Small choices scale: skipping 1,000 AI searches saves ~0.085 gallons. Staying ${percentText}% under budget keeps that momentum going all week.`,
+        `Skipping 10,000 AI queries can hydrate 200 adults for a day. You're already moving in that direction.`
       ]
     };
     
-    // select random message from appropriate category
     let message;
     if (villages > 0) {
       message = positiveMessages.villages[Math.floor(Math.random() * positiveMessages.villages.length)];
@@ -821,8 +854,25 @@ async function updateComparisonMessage(dailyUsage, averageUsage) {
     }
     
     comparisonText.textContent = message;
+  } else if (difference > 0 && usageRatio < 1) {
+    const remaining = Math.max(averageUsage - dailyUsage, 0);
+    const remainingFormatted = await formatWaterUsage(remaining);
+    const estimatedFormatted = await formatWaterUsage(averageUsage);
+    const remainingChildren = Math.max(1, Math.ceil(remaining / childDailyNeed));
+    const ratioText = Math.round(usageRatio * 100);
+    
+    comparisonCard.className = 'comparison-card caution';
+    
+    const cautionMessages = [
+      `You're at ${ratioText}% of today's DropQuery estimate (${estimatedFormatted}). Large data centers already evaporate hundreds of thousands of gallons daily to cool GPUs—pausing now keeps aquifers from running dry.`,
+      `Only ${remainingFormatted} remains before you match today's estimate. That's drinking water for ${remainingChildren} ${remainingChildren === 1 ? 'child' : 'children'} (${childDailyNeedRange} recommended each day).`,
+      `Almost there! Staying under ${estimatedFormatted} avoids drawing even more cooling water from fossil-fuel power plants, where warm discharge can smother river ecosystems.`,
+      `If AI demand keeps climbing, desert communities face the worst water scarcity (MIT). Pull back before ${estimatedFormatted} so local towns aren't competing with server farms.`,
+      `US data centers already consumed 221 billion gallons in 2023 (EESI). Holding the line before ${estimatedFormatted} keeps you off that curve.`
+    ];
+    
+    comparisonText.textContent = cautionMessages[Math.floor(Math.random() * cautionMessages.length)];
   } else if (difference < 0) {
-    // negative - used more (above average)
     const excess = Math.abs(difference);
     const adults = Math.ceil(excess / adultDailyNeed);
     const children = Math.ceil(excess / childDailyNeed);
@@ -831,41 +881,39 @@ async function updateComparisonMessage(dailyUsage, averageUsage) {
     
     comparisonCard.className = 'comparison-card negative';
     
-    // warnings with humanitarian context - diverse variations
     const negativeMessages = {
       children3plus: [
-        `You're using ${Math.abs(percentage)}% more than your average. That's enough water for ${children} children. Consider reducing your AI queries to help those in need.`,
-        `Your excess usage could hydrate ${children} children. Your AI queries have a real humanitarian cost.`,
-        `${children} children could drink clean water with what you're using above average. Be more mindful.`
+        `You're ${percentAbove.toFixed(1)}% above today's estimate—enough water for ${children} children following pediatric guidance of ${childDailyNeedRange} per day. Cooling AI shouldn’t outrank kids’ hydration.`,
+        `Each extra prompt could hydrate ${children} children instead of evaporating in server cooling towers. Let's redirect that water back to real people.`,
+        `Overshooting by ${percentAbove.toFixed(1)}% competes with the ${childDailyNeedRange} children should drink daily. Dial it back so data centers stop borrowing from classrooms.`
       ],
       children: [
-        `You're using ${Math.abs(percentage)}% more than your average. That's enough water for ${children} ${children === 1 ? 'child' : 'children'}. Consider reducing your AI queries.`,
-        `Your extra usage equals a day's water for ${children} ${children === 1 ? 'child' : 'children'}. Think about reducing AI queries.`,
-        `${children} ${children === 1 ? 'child' : 'children'} could stay hydrated with your excess water usage.`
+        `You're ${percentAbove.toFixed(1)}% over. That's a full day's water (${childDailyNeedRange}) for ${children} ${children === 1 ? 'child' : 'children'}.`,
+        `Those extra prompts equal what ${children} ${children === 1 ? 'child relies on' : 'children rely on'} daily. Let’s give their cups priority.`,
+        `DropQuery flagged ${percentAbove.toFixed(1)}% over budget—the same water ${children} ${children === 1 ? 'child' : 'children'} should drink each day.`
       ],
       shelters: [
-        `You're using ${Math.abs(percentage)}% more than your average. That's enough for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'}. Be mindful of your AI usage.`,
-        `Your excess usage could support ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'}. Consider the impact.`,
-        `${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} could use the water you're consuming above average.`
+        `Overshooting feeds ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} worth of water into data-center cooling towers instead of bowls. GPUs don’t need it more than rescues do.`,
+        `Thermal discharge from overworked servers heats rivers and stresses shelter water supplies. Drop ${percentAbove.toFixed(1)}% before habitats feel it.`,
+        `Water-intensive AI usage makes shelters shoulder the scarcity. Falling back under budget keeps their taps running.`
       ],
       adults: [
-        `You're using ${Math.abs(percentage)}% more than your average. That's enough water for ${adults} ${adults === 1 ? 'adult' : 'adults'}. Consider reducing your AI queries.`,
-        `Your excess usage equals daily water for ${adults} ${adults === 1 ? 'person' : 'people'}. Be more conscious.`,
-        `${adults} ${adults === 1 ? 'adult' : 'adults'} could stay hydrated with your extra water consumption.`
+        `You're ${percentAbove.toFixed(1)}% over—enough for ${adults} ${adults === 1 ? 'adult' : 'adults'} (men need 3.7L, women 2.7L daily). AI shouldn’t outrank human bodies.`,
+        `Every bonus query equals what ${adults} ${adults === 1 ? 'person drinks' : 'people drink'} each day. Let’s keep that water in kitchens, not data halls.`,
+        `Thermal pollution and carbon emissions spike when servers chase your extra prompts. Staying under budget protects rivers and air for ${adults} ${adults === 1 ? 'adult' : 'adults'}.`
       ],
       dogs: [
-        `You're using ${Math.abs(percentage)}% more than your average. That's enough for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'}. Be mindful of your AI usage.`,
-        `Your excess usage could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day. Consider reducing queries.`,
-        `${dogs} ${dogs === 1 ? 'dog' : 'dogs'} could thrive on the water you're using above average.`
+        `Dogs need about 1 oz per pound. Your overage could water ${dogs} ${dogs === 1 ? 'dog' : 'dogs'}—not server racks.`,
+        `That ${percentAbove.toFixed(1)}% overshoot equals a day’s hydration for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'}. Let’s keep their bowls filled instead of cooling GPUs.`,
+        `Warm discharge from overworked data centers also heats the air dogs breathe. Cutting back keeps their water and their walks cooler.`
       ],
       default: [
-        `You're using ${Math.abs(percentage)}% more than your average. Consider reducing your AI queries to help conserve water for those in need.`,
-        `Your excess usage has a real cost. Be mindful of your AI queries and their impact.`,
-        `Consider reducing your AI usage - every drop saved helps someone in need.`
+        `You're ${percentAbove.toFixed(1)}% above plan. Each extra prompt compounds water scarcity, thermal pollution, and CO₂ from the fossil-fueled grid supporting AI.`,
+        `Data centers in arid regions already strain wells. Overshooting pulls even more water into evaporative cooling instead of local taps.`,
+        `Remember: mining metals for GPUs, producing ultrapure water (1,500 gallons → 1,000 gallons usable), and disposing of e-waste all multiply the impact of every unnecessary query.`
       ]
     };
     
-    // select random message from appropriate category
     let message;
     if (children >= 3) {
       message = negativeMessages.children3plus[Math.floor(Math.random() * negativeMessages.children3plus.length)];
@@ -900,4 +948,3 @@ async function saveUserDataToSupabase(userData) {
     console.error('Error saving to Supabase:', error);
   }
 }
-

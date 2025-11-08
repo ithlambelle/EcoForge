@@ -1,7 +1,7 @@
-# Waterer Project Summary
+# DropQuery Project Summary
 
 ## Overview
-Waterer is a Chrome extension that tracks water usage from AI model queries (ChatGPT, Gemini, etc.) and provides positive reinforcement to encourage sustainable AI usage.
+DropQuery is a Chrome extension that tracks water usage from AI model queries (ChatGPT, Gemini, etc.) and provides positive reinforcement to encourage sustainable AI usage.
 
 ## Project Structure
 

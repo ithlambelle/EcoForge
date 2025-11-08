@@ -37,7 +37,7 @@
 
 1. **Reload the extension in Chrome**:
    - Go to `chrome://extensions/`
-   - Find "Waterer - AI Water Usage Tracker"
+   - Find "DropQuery - AI Water Usage Tracker"
    - Click the reload icon (↻) on the extension card
    - OR remove and re-add the extension
 

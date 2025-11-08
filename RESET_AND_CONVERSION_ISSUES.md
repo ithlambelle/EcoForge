@@ -1,7 +1,7 @@
 # Reset and Unit Conversion Issues
 
 ## Problem Summary
-Two critical issues affecting the Waterer extension:
+Two critical issues affecting the DropQuery extension:
 1. Reset Data functionality not properly resetting UI elements and dashboard stats
 2. Unit conversion (ml to gallons/ounces) not working correctly
 

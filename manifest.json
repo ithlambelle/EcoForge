@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Waterer - AI Water Usage Tracker",
+  "name": "DropQuery - AI Water Usage Tracker",
   "version": "1.0.0",
   "description": "Track and visualize water usage from AI model queries with positive reinforcement",
   "content_security_policy": {

@@ -116,7 +116,7 @@ No configuration needed - it just works!
 
 1. **Reload Extension**:
    - Go to `chrome://extensions/`
-   - Click reload (↻) on Waterer extension
+   - Click reload (↻) on DropQuery extension
    - Chrome will ask you to approve new permissions
 
 2. **Approve Permissions**:
