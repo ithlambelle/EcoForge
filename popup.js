@@ -167,18 +167,30 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
     
-    const surveyData = await chrome.storage.local.get(['surveyCompleted', 'userData', 'dailyUsage', 'isResetting']);
+    // Add a small delay to ensure any pending storage writes have completed
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    const surveyData = await chrome.storage.local.get(['surveyCompleted', 'userData', 'dailyUsage', 'isResetting', 'surveyCommitId']);
     
     console.log('💧 DropQuery: State check', {
       surveyCompleted: surveyData.surveyCompleted,
       isResetting: surveyData.isResetting,
-      hasUserData: !!surveyData.userData
+      hasUserData: !!surveyData.userData,
+      commitId: surveyData.surveyCommitId
     });
     
     // if isResetting is true, clear it (shouldn't happen, but just in case)
     if (surveyData.isResetting) {
       console.log('💧 DropQuery: Clearing stuck isResetting flag');
       await chrome.storage.local.set({ isResetting: false });
+    }
+    
+    // If we have a commit ID, we just completed the survey - show dashboard
+    if (surveyData.surveyCommitId) {
+      console.log('💧 DropQuery: Found commit ID, survey was completed, showing dashboard');
+      showDashboard();
+      await updateDashboard();
+      return;
     }
     
     if (surveyData.surveyCompleted) {
@@ -199,8 +211,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
-  // initial state check
-  await checkStateAndUpdateUI();
+  // initial state check with retry logic
+  let retryCount = 0;
+  const maxRetries = 3;
+  async function initWithRetry() {
+    await checkStateAndUpdateUI();
+    
+    // Double-check after a short delay to catch any race conditions
+    setTimeout(async () => {
+      const verify = await chrome.storage.local.get(['surveyCompleted', 'surveyCommitId']);
+      if (verify.surveyCompleted && !dashboardContainer.classList.contains('show')) {
+        console.log('💧 DropQuery: Retry check - survey completed but dashboard not shown, fixing...');
+        showDashboard();
+        await updateDashboard();
+      }
+    }, 200);
+  }
+  
+  await initWithRetry();
   
   // handle survey submission
   surveyForm.addEventListener('submit', async (e) => {
@@ -277,31 +305,63 @@ document.addEventListener('DOMContentLoaded', async () => {
     dashboardContainer.style.display = 'block';
     console.log('💧 DropQuery: Dashboard visible, survey hidden');
     
+    // CRITICAL: Force a synchronous re-check to ensure UI stays
+    const immediateVerify = await chrome.storage.local.get(['surveyCompleted', 'surveyCommitId']);
+    console.log('💧 DropQuery: Immediate verify after UI switch', {
+      surveyCompleted: immediateVerify.surveyCompleted,
+      commitId: immediateVerify.surveyCommitId
+    });
+    
+    // If state is wrong, restore it immediately
+    if (!immediateVerify.surveyCompleted || immediateVerify.surveyCommitId !== __lastCommitId) {
+      console.error('💧 DropQuery: State mismatch detected, restoring immediately');
+      await chrome.storage.local.set({
+        surveyCompleted: true,
+        surveyCommitId: __lastCommitId,
+        isResetting: false
+      });
+      // Force UI again
+      surveyContainer.style.display = 'none';
+      dashboardContainer.classList.add('show');
+      dashboardContainer.style.display = 'block';
+    }
+    
     // Update dashboard content
     await updateDashboard();
     
-    // Verify persist (best-effort)
-    chrome.storage.local.get(['surveyCompleted', 'surveyCommitId'], ({ surveyCompleted, surveyCommitId }) => {
-      if (!surveyCompleted || surveyCommitId !== __lastCommitId) {
-        console.warn('💧 DropQuery: Survey commit verify failed', {
-          surveyCompleted,
-          expectedCommitId: __lastCommitId,
-          actualCommitId: surveyCommitId
-        });
-        // Restore if needed
-        if (!surveyCompleted) {
-          chrome.storage.local.set({ surveyCompleted: true, surveyCommitId: __lastCommitId });
+    // Verify persist (best-effort) with multiple checks
+    let verifyAttempts = 0;
+    const maxVerifyAttempts = 5;
+    const verifyInterval = setInterval(() => {
+      verifyAttempts++;
+      chrome.storage.local.get(['surveyCompleted', 'surveyCommitId'], ({ surveyCompleted, surveyCommitId }) => {
+        if (!surveyCompleted || surveyCommitId !== __lastCommitId) {
+          console.warn(`💧 DropQuery: Verify attempt ${verifyAttempts} failed`, {
+            surveyCompleted,
+            expectedCommitId: __lastCommitId,
+            actualCommitId: surveyCommitId
+          });
+          // Restore if needed
+          if (!surveyCompleted) {
+            chrome.storage.local.set({ surveyCompleted: true, surveyCommitId: __lastCommitId });
+          }
+        } else {
+          console.log('💧 DropQuery: Survey commit verified successfully', { commitId: surveyCommitId });
+          clearInterval(verifyInterval);
         }
-      } else {
-        console.log('💧 DropQuery: Survey commit verified successfully', { commitId: surveyCommitId });
-      }
+      });
       
-      // Small delay before releasing guard to let onChanged settle
-      setTimeout(() => {
-        __isSubmitting = false;
-        console.log('💧 DropQuery: Submission guard released');
-      }, 150);
-    });
+      if (verifyAttempts >= maxVerifyAttempts) {
+        clearInterval(verifyInterval);
+        console.log('💧 DropQuery: Max verify attempts reached');
+      }
+    }, 100);
+    
+    // Small delay before releasing guard to let onChanged settle
+    setTimeout(() => {
+      __isSubmitting = false;
+      console.log('💧 DropQuery: Submission guard released');
+    }, 500);
     
     // send to supabase (non-blocking, don't wait)
     saveUserDataToSupabase(userData).catch(error => {
