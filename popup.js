@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function showDashboard() {
   document.getElementById('survey-container').style.display = 'none';
-  document.getElementById('dashboard-container').style.display = 'block';
+  document.getElementById('dashboard-container').classList.add('show');
 }
 
 async function updateDashboard() {
@@ -102,8 +102,13 @@ async function updateDashboard() {
   document.getElementById('total-usage').textContent = formatWaterUsage(data.totalUsage || 0);
   document.getElementById('avg-usage').textContent = formatWaterUsage(userData.averageUsage || 0);
   
-  // update comparison message
+  // update comparison message (this will now show random variations)
   updateComparisonMessage(data.dailyUsage || 0, userData.averageUsage || 0);
+  
+  // also update periodically to show different messages
+  setTimeout(() => {
+    updateComparisonMessage(data.dailyUsage || 0, userData.averageUsage || 0);
+  }, 5000);
 }
 
 // water usage per survey question (in ml)
