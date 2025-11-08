@@ -640,7 +640,7 @@
           if (text.length > 0) {
             // track immediately, don't wait
             try {
-              if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+              if (isChromeContextValid()) {
                 const waterUsage = estimateQuerySizeFromText(text);
                 console.log('💧 Waterer: Calling trackQuery immediately', { model: 'chatgpt', waterUsage, textLength: text.length });
                 trackQuery('chatgpt', waterUsage);
@@ -684,7 +684,7 @@
           console.log('💧 Waterer: Form submitted, text length:', text.length, 'text:', text.substring(0, 50));
           if (text.length > 0) {
             try {
-              if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+              if (isChromeContextValid()) {
                 console.log('💧 Waterer: Calling trackQuery from form submit', { model: 'chatgpt', textLength: text.length });
                 trackQuery('chatgpt', estimateQuerySizeFromText(text));
               }
@@ -726,7 +726,7 @@
                 if (text.length > 0) {
                   // track immediately
                   try {
-                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+                    if (isChromeContextValid()) {
                       const waterUsage = estimateQuerySizeFromText(text);
                       console.log('💧 Waterer: Calling trackQuery from button immediately', { model: 'chatgpt', waterUsage, textLength: text.length });
                       trackQuery('chatgpt', waterUsage);
@@ -881,7 +881,7 @@
                     setTimeout(() => {
                       try {
                         // check if extension context is still valid
-                        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+                        if (isChromeContextValid()) {
                           const modelName = detectAIModelFromDomain(domain);
                           trackQuery(modelName, estimateQuerySize());
                         }
@@ -917,22 +917,41 @@
     return 'ai-service';
   }
   
+  // helper to safely check if chrome APIs are available
+  function isChromeContextValid() {
+    try {
+      return typeof chrome !== 'undefined' && 
+             chrome.runtime && 
+             chrome.runtime.id && 
+             chrome.storage && 
+             chrome.storage.local;
+    } catch (error) {
+      return false;
+    }
+  }
+  
   // observe generic AI chat interfaces (works on any site)
   function observeGenericAIChat() {
     const observer = new MutationObserver(() => {
-      // look for common AI chat patterns
-      const chatInputs = document.querySelectorAll(
-        'textarea[placeholder*="message" i], ' +
-        'textarea[placeholder*="chat" i], ' +
-        'textarea[placeholder*="ask" i], ' +
-        'textarea[placeholder*="prompt" i], ' +
-        'input[type="text"][placeholder*="message" i], ' +
-        'div[contenteditable="true"][role="textbox"], ' +
-        'div[class*="chat-input"], ' +
-        'div[class*="message-input"]'
-      );
+      // check chrome context before doing anything
+      if (!isChromeContextValid()) {
+        return; // extension context invalidated, stop observing
+      }
       
-      chatInputs.forEach(input => {
+      try {
+        // look for common AI chat patterns
+        const chatInputs = document.querySelectorAll(
+          'textarea[placeholder*="message" i], ' +
+          'textarea[placeholder*="chat" i], ' +
+          'textarea[placeholder*="ask" i], ' +
+          'textarea[placeholder*="prompt" i], ' +
+          'input[type="text"][placeholder*="message" i], ' +
+          'div[contenteditable="true"][role="textbox"], ' +
+          'div[class*="chat-input"], ' +
+          'div[class*="message-input"]'
+        );
+        
+        chatInputs.forEach(input => {
         if (!input.hasAttribute('data-waterer-tracked')) {
           input.setAttribute('data-waterer-tracked', 'true');
           
@@ -944,7 +963,7 @@
                 setTimeout(() => {
                   try {
                     // check if extension context is still valid
-                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+                    if (isChromeContextValid()) {
                       // check if this looks like an AI query
                       if (isLikelyAIQuery(text)) {
                         const modelName = detectAIModelFromDomain(window.location.hostname);
@@ -953,8 +972,10 @@
                     }
                   } catch (error) {
                     // extension context invalidated - ignore silently
-                    if (!error.message?.includes('Extension context invalidated')) {
-                      console.warn('Waterer: Error tracking query', error);
+                    const errorMsg = error?.message || String(error);
+                    if (!errorMsg.includes('Extension context invalidated') && 
+                        !errorMsg.includes('message handler closed')) {
+                      // only log unexpected errors
                     }
                   }
                 }, 500);
@@ -972,14 +993,16 @@
                 setTimeout(() => {
                   try {
                     // check if extension context is still valid
-                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+                    if (isChromeContextValid()) {
                       const modelName = detectAIModelFromDomain(window.location.hostname);
                       trackQuery(modelName, estimateQuerySizeFromText(text));
                     }
                   } catch (error) {
                     // extension context invalidated - ignore silently
-                    if (!error.message?.includes('Extension context invalidated')) {
-                      console.warn('Waterer: Error tracking query', error);
+                    const errorMsg = error?.message || String(error);
+                    if (!errorMsg.includes('Extension context invalidated') && 
+                        !errorMsg.includes('message handler closed')) {
+                      // only log unexpected errors
                     }
                   }
                 }, 500);
@@ -988,9 +1011,23 @@
           }
         }
       });
+      } catch (error) {
+        // extension context invalidated or other error - stop observing
+        const errorMsg = error?.message || String(error);
+        if (errorMsg.includes('Extension context invalidated') || 
+            errorMsg.includes('message handler closed')) {
+          observer.disconnect();
+        }
+      }
     });
     
-    observer.observe(document.body, { childList: true, subtree: true });
+    try {
+      if (document.body) {
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
+    } catch (error) {
+      // ignore observation errors
+    }
   }
   
   // check if text input looks like an AI query
@@ -1173,13 +1210,8 @@
   // track a query
   async function trackQuery(model, waterUsage) {
     // check if extension context is still valid
-    try {
-      if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) {
-        return; // extension context invalidated
-      }
-    } catch (error) {
-      // extension context invalidated
-      return;
+    if (!isChromeContextValid()) {
+      return; // extension context invalidated
     }
     
     // prevent duplicate tracking
