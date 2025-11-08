@@ -92,12 +92,26 @@
     // make draggable
     makeDraggable(squareElement);
     
-    // load saved unit preference
+    // load saved unit preference and listen for changes
     chrome.storage.local.get(['waterUnit'], (result) => {
       if (result.waterUnit && ['ml', 'gallons', 'ounces'].includes(result.waterUnit)) {
         currentUnit = result.waterUnit;
         updateUnitToggleButton();
         updateSquareDisplay();
+        updateBottleDisplay();
+      }
+    });
+    
+    // listen for unit changes from popup
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === 'local' && changes.waterUnit) {
+        const newUnit = changes.waterUnit.newValue;
+        if (['ml', 'gallons', 'ounces'].includes(newUnit)) {
+          currentUnit = newUnit;
+          updateUnitToggleButton();
+          updateSquareDisplay();
+          updateBottleDisplay();
+        }
       }
     });
     

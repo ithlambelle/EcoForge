@@ -5,6 +5,75 @@ document.addEventListener('DOMContentLoaded', async () => {
   const dashboardContainer = document.getElementById('dashboard-container');
   const surveyForm = document.getElementById('survey-form');
   
+  // unit conversion (shared with content.js)
+  let currentUnit = 'ml'; // 'ml', 'gallons', 'ounces'
+  const ML_TO_GALLON = 3785.41;  // 1 US gallon = 3785.41 ml
+  const ML_TO_OUNCE = 29.5735;   // 1 US fluid ounce = 29.5735 ml
+  
+  // convert ml to selected unit
+  function convertToUnit(ml, unit) {
+    switch(unit) {
+      case 'gallons':
+        return ml / ML_TO_GALLON;
+      case 'ounces':
+        return ml / ML_TO_OUNCE;
+      case 'ml':
+      default:
+        return ml;
+    }
+  }
+  
+  // get unit label
+  function getUnitLabel(unit) {
+    switch(unit) {
+      case 'gallons':
+        return 'gal';
+      case 'ounces':
+        return 'oz';
+      case 'ml':
+      default:
+        return 'ml';
+    }
+  }
+  
+  // load unit preference
+  chrome.storage.local.get(['waterUnit'], (result) => {
+    if (result.waterUnit && ['ml', 'gallons', 'ounces'].includes(result.waterUnit)) {
+      currentUnit = result.waterUnit;
+      updateUnitToggleButton();
+      updateDashboard();
+    }
+  });
+  
+  // unit toggle button
+  const unitToggleBtn = document.getElementById('unit-toggle-btn');
+  if (unitToggleBtn) {
+    unitToggleBtn.addEventListener('click', () => {
+      toggleUnit();
+    });
+  }
+  
+  // toggle between units: ml -> gallons -> ounces -> ml
+  function toggleUnit() {
+    const units = ['ml', 'gallons', 'ounces'];
+    const currentIndex = units.indexOf(currentUnit);
+    currentUnit = units[(currentIndex + 1) % units.length];
+    
+    // save preference
+    chrome.storage.local.set({ waterUnit: currentUnit }).catch(() => {});
+    
+    updateUnitToggleButton();
+    updateDashboard();
+  }
+  
+  // update unit toggle button text
+  function updateUnitToggleButton() {
+    const toggleBtn = document.getElementById('unit-toggle-btn');
+    if (toggleBtn) {
+      toggleBtn.textContent = getUnitLabel(currentUnit);
+    }
+  }
+  
   // check if user has completed survey
   const surveyData = await chrome.storage.local.get(['surveyCompleted', 'userData', 'dailyUsage']);
   
@@ -166,9 +235,10 @@ function updateSurveyWaterDisplay(usage) {
     surveyForm.insertBefore(display, surveyForm.querySelector('.submit-btn'));
   }
   
+  const formatted = formatWaterUsage(usage);
   display.innerHTML = `
     <div style="font-size: 14px; color: #1976d2; font-weight: bold;">
-      💧 Water used so far: <span id="survey-water-amount">${parseFloat(usage.toFixed(4))}</span> ml
+      💧 Water used so far: <span id="survey-water-amount">${formatted}</span>
     </div>
     <div style="font-size: 11px; color: #666; margin-top: 5px;">
       Each question you answer adds a small amount of water usage
@@ -209,13 +279,24 @@ function calculateAverageUsage(surveyAnswers) {
   return Math.round(baseUsage);
 }
 
-function formatWaterUsage(ml) {
-  if (ml < 1000) {
-    return `${parseFloat(ml.toFixed(4))} ml`;
-  } else if (ml < 1000000) {
-    return `${parseFloat((ml / 1000).toFixed(4))} L`;
+function formatWaterUsage(ml, unit = null) {
+  const targetUnit = unit || currentUnit;
+  const converted = convertToUnit(ml, targetUnit);
+  const unitLabel = getUnitLabel(targetUnit);
+  
+  // format based on magnitude
+  if (targetUnit === 'ml') {
+    if (ml < 1000) {
+      return `${parseFloat(ml.toFixed(4))} ${unitLabel}`;
+    } else if (ml < 1000000) {
+      return `${parseFloat((ml / 1000).toFixed(4))} L`;
+    } else {
+      return `${parseFloat((ml / 1000000).toFixed(4))} m³`;
+    }
   } else {
-    return `${parseFloat((ml / 1000000).toFixed(4))} m³`;
+    // for gallons and ounces, show with appropriate decimal places
+    const decimals = converted < 1 ? 4 : (converted < 10 ? 3 : 2);
+    return `${parseFloat(converted.toFixed(decimals))} ${unitLabel}`;
   }
 }
 

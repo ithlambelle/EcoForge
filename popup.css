@@ -187,3 +187,29 @@ body {
   background: #d32f2f;
 }
 
+.unit-toggle-btn-popup {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  min-width: 60px;
+}
+
+.unit-toggle-btn-popup:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.unit-hint {
+  font-size: 11px;
+  color: #666;
+  margin-left: 8px;
+  font-style: italic;
+}
+
