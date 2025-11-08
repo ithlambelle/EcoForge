@@ -11,6 +11,22 @@
   let isDragging = false;
   let dragOffset = { x: 0, y: 0 };
   
+  // dedupe/throttle to prevent overcounting
+  let lastHit = 0;
+  function safeTrackQuery(model = 'chatgpt', waterUsage = null) {
+    const now = Date.now();
+    if (now - lastHit < 1500) {
+      console.log('💧 Waterer: Throttled duplicate detection (within 1.5s)');
+      return; // 1.5s fuse
+    }
+    lastHit = now;
+    if (waterUsage === null) {
+      waterUsage = estimateQuerySize(model);
+    }
+    console.log('💧 Waterer: Tracking query', { model, waterUsage: parseFloat(waterUsage.toFixed(4)) + 'ml' });
+    trackQuery(model, waterUsage);
+  }
+  
   // initialize extension
   async function init() {
     try {
@@ -58,8 +74,8 @@
     squareElement = document.createElement('div');
     squareElement.className = 'waterer-container waterer-square appear';
     squareElement.innerHTML = `
-      <div class="query-count">0</div>
-      <div class="water-usage">0 ml</div>
+      <div class="query-count">0 <span class="suffix">queries</span></div>
+      <div class="water-usage">0.0000 <span class="suffix">ml</span></div>
       <button class="close-btn" title="Remove">×</button>
     `;
     
@@ -116,7 +132,7 @@
     
     const label = document.createElement('div');
     label.className = 'bottle-label';
-    label.textContent = '500ml';
+    label.textContent = '5ml';
     
     const closeBtn = document.createElement('button');
     closeBtn.className = 'close-btn';
@@ -224,7 +240,14 @@
     const usageEl = squareElement.querySelector('.water-usage');
     
     if (countEl) {
-      countEl.textContent = currentCount;
+      // preserve suffix if it exists, otherwise add it
+      const suffix = countEl.querySelector('.suffix') || document.createElement('span');
+      if (!suffix.classList.contains('suffix')) {
+        suffix.className = 'suffix';
+        suffix.textContent = ' queries';
+      }
+      countEl.innerHTML = `${currentCount} `;
+      countEl.appendChild(suffix);
       // add animation
       countEl.style.transform = 'scale(1.2)';
       setTimeout(() => {
@@ -232,7 +255,29 @@
       }, 300);
     }
     if (usageEl) {
-      usageEl.textContent = formatWaterUsage(currentUsage);
+      // format water usage and add ml suffix
+      // calculate bottles based on 5ml capacity (1 bottle = 5ml)
+      const bottles = Math.floor(currentUsage / 5);
+      const formatted = formatWaterUsage(currentUsage);
+      // extract just the number part (before the unit)
+      const numberPart = formatted.split(' ')[0];
+      
+      // create or get suffix element
+      let suffix = usageEl.querySelector('.suffix');
+      if (!suffix) {
+        suffix = document.createElement('span');
+        suffix.className = 'suffix';
+      }
+      
+      // show bottles if >= 1 bottle, otherwise show ml
+      if (bottles >= 1) {
+        suffix.textContent = ` bottles (${numberPart} ml)`;
+      } else {
+        suffix.textContent = ' ml';
+      }
+      
+      usageEl.innerHTML = bottles >= 1 ? `${bottles} ` : `${numberPart} `;
+      usageEl.appendChild(suffix);
     }
     
       // update local variables
@@ -243,6 +288,17 @@
       if (!error.message?.includes('Extension context invalidated')) {
         console.warn('Waterer: Error updating square display', error);
       }
+    }
+  }
+  
+  // helper function to format water usage with up to 4 decimal places (removes trailing zeros)
+  function formatWaterUsage(ml) {
+    if (ml < 1000) {
+      return `${parseFloat(ml.toFixed(4))} ml`;
+    } else if (ml < 1000000) {
+      return `${parseFloat((ml / 1000).toFixed(4))} L`;
+    } else {
+      return `${parseFloat((ml / 1000000).toFixed(4))} m³`;
     }
   }
   
@@ -275,9 +331,10 @@
       
       console.log('💧 Waterer: Updating bottle', { dailyUsage, averageUsage });
       
-      // determine bottle size (500ml or gallon)
+      // determine bottle size (5ml for now, or gallon for very high usage)
+      // use 5ml bottle for better visibility per query
       const useGallon = averageUsage >= 3785.412;
-      const bottleCapacity = useGallon ? 3785.412 : 500;
+      const bottleCapacity = useGallon ? 3785.412 : 5; // reduced to 5ml for visibility
       
       if (useGallon && !bottleElement.classList.contains('gallon')) {
         bottleElement.classList.add('gallon');
@@ -286,11 +343,20 @@
       } else if (!useGallon && bottleElement.classList.contains('gallon')) {
         bottleElement.classList.remove('gallon');
         const label = bottleElement.querySelector('.bottle-label');
-        if (label) label.textContent = '500ml';
+        if (label) label.textContent = '5ml';
+      } else if (!useGallon) {
+        // ensure label is set to 5ml
+        const label = bottleElement.querySelector('.bottle-label');
+        if (label && label.textContent !== '5ml') {
+          label.textContent = '5ml';
+        }
       }
       
       // calculate fill percentage - start at 0, fill based on current usage
       // use modulo to show remainder after full bottles, but ensure it starts at 0
+      // since water usage is very small (0.3ml per query), we'll show cumulative usage
+      // 33 queries = 500ml bottle (from research: "Every 33 response generated equates to one 500ml water bottle")
+      // so we accumulate small increments until they reach meaningful bottle fills
       const fillPercentage = dailyUsage === 0 ? 0 : Math.min((dailyUsage % bottleCapacity) / bottleCapacity * 100, 100);
       const waterFill = bottleElement.querySelector('.water-fill');
       
@@ -314,11 +380,183 @@
     }
   }
   
+  // inject fetch hook into page context (most reliable method)
+  function injectFetchHook() {
+    console.log('💧 Waterer: Injecting fetch hook into page context');
+    const s = document.createElement('script');
+    s.textContent = `
+      (function(){
+        const _fetch = window.fetch;
+        window.fetch = async function(input, init){
+          try {
+            const url = (typeof input === 'string') ? input : (input && input.url) || '';
+            const method = (init && init.method) || (input && input.method) || 'GET';
+            // detect ChatGPT message send
+            const looksLikeChatGPT = method === 'POST' && (/\\/backend-api\\/conversation/.test(url) || /\\/backend-anon\\/conversation/.test(url));
+            // detect Google AI Overview / Gemini
+            const looksLikeGoogleAI = method === 'POST' && (/generativelanguage\\.googleapis\\.com/.test(url) || /\\/v1\\/models/.test(url) || /gemini/.test(url) || /ai\\.google\\.dev/.test(url));
+            
+            if (looksLikeChatGPT) {
+              console.log('💧 Waterer [page]: Detected POST to conversation endpoint', url);
+              window.postMessage({ type: 'waterer:send-start', url: url, model: 'chatgpt' }, '*');
+            } else if (looksLikeGoogleAI) {
+              console.log('💧 Waterer [page]: Detected Google AI/Gemini request', url);
+              window.postMessage({ type: 'waterer:send-start', url: url, model: 'gemini' }, '*');
+            }
+            
+            const resp = await _fetch.apply(this, arguments);
+            if (looksLikeChatGPT && resp.ok) {
+              console.log('💧 Waterer [page]: Conversation POST succeeded');
+              window.postMessage({ type: 'waterer:send-ok', url: url, model: 'chatgpt' }, '*');
+            } else if (looksLikeGoogleAI && resp.ok) {
+              console.log('💧 Waterer [page]: Google AI request succeeded');
+              window.postMessage({ type: 'waterer:send-ok', url: url, model: 'gemini' }, '*');
+            }
+            return resp;
+          } catch (e) {
+            return (typeof _fetch === 'function') ? _fetch.apply(this, arguments) : Promise.reject(e);
+          }
+        };
+        // also cover sendBeacon
+        const _sb = navigator.sendBeacon;
+        if (_sb) {
+          navigator.sendBeacon = function(url, data){
+            const looksLikeChatGPT = /\\/backend-api\\/conversation/.test(url) || /\\/backend-anon\\/conversation/.test(url);
+            const looksLikeGoogleAI = /generativelanguage\\.googleapis\\.com/.test(url) || /gemini/.test(url) || /ai\\.google\\.dev/.test(url);
+            
+            if (looksLikeChatGPT) {
+              console.log('💧 Waterer [page]: Detected sendBeacon to conversation endpoint', url);
+              window.postMessage({ type: 'waterer:send-start', url: url, model: 'chatgpt' }, '*');
+            } else if (looksLikeGoogleAI) {
+              console.log('💧 Waterer [page]: Detected sendBeacon to Google AI endpoint', url);
+              window.postMessage({ type: 'waterer:send-start', url: url, model: 'gemini' }, '*');
+            }
+            return _sb.apply(this, arguments);
+          };
+        }
+      })();
+    `;
+    (document.head || document.documentElement).appendChild(s);
+    s.remove();
+    console.log('💧 Waterer: Fetch hook injected');
+  }
+  
+  // listen for page->content notifications from fetch hook
+  function setupMessageListener() {
+    window.addEventListener('message', (ev) => {
+      if (!ev || !ev.data || typeof ev.data !== 'object') return;
+      const { type, model } = ev.data;
+      if (type === 'waterer:send-start' || type === 'waterer:send-ok') {
+        const detectedModel = model || 'chatgpt'; // default to chatgpt if not specified
+        console.log('💧 Waterer: Received message from page context', type, 'model:', detectedModel);
+        try {
+          safeTrackQuery(detectedModel);
+        } catch (error) {
+          console.error('💧 Waterer: Error in safeTrackQuery', error);
+        }
+      }
+    });
+    console.log('💧 Waterer: Message listener set up');
+  }
+  
+  // detect Google AI Overviews
+  function observeGoogleAIOverview() {
+    console.log('💧 Waterer: Setting up Google AI Overview detection');
+    const seen = new WeakSet();
+    
+    const checkForAIOverview = () => {
+      // detect AI Overview section on Google search
+      const aiOverview = document.querySelector('[data-ved*="ai"], [aria-label*="AI Overview"], [class*="ai-overview"], [id*="ai-overview"]');
+      if (aiOverview && !seen.has(aiOverview)) {
+        seen.add(aiOverview);
+        console.log('💧 Waterer: Detected Google AI Overview');
+        // track as a Google/Gemini query
+        safeTrackQuery('gemini');
+      }
+      
+      // also check for AI Overview text indicators
+      const aiOverviewText = Array.from(document.querySelectorAll('*')).find(el => {
+        const text = el.textContent || '';
+        return text.includes('AI Overview') && el.offsetParent !== null;
+      });
+      
+      if (aiOverviewText && !seen.has(aiOverviewText)) {
+        seen.add(aiOverviewText);
+        console.log('💧 Waterer: Detected AI Overview text indicator');
+        safeTrackQuery('gemini');
+      }
+    };
+    
+    // check immediately
+    checkForAIOverview();
+    
+    // observe for AI Overview appearance
+    const mo = new MutationObserver(() => {
+      checkForAIOverview();
+    });
+    
+    mo.observe(document.body, { childList: true, subtree: true });
+    
+    // also check periodically
+    setInterval(checkForAIOverview, 2000);
+  }
+  
+  // observe DOM for new messages (fallback method)
+  function observeSendsViaDOM() {
+    console.log('💧 Waterer: Setting up MutationObserver for message detection');
+    // resilient root selector: page often has a main chat scroll region
+    const root = document.querySelector('[role="log"], [data-testid="conversation-turns"], main, [class*="conversation"]') || document.body;
+    const seen = new WeakSet();
+    
+    const mo = new MutationObserver((muts) => {
+      let newUserOrAssistantNode = false;
+      for (const m of muts) {
+        if (m.addedNodes && m.addedNodes.length > 0) {
+          m.addedNodes.forEach((node) => {
+            if (!(node instanceof HTMLElement) || seen.has(node)) return;
+            // heuristics: a turn bubble with data attributes or roles
+            const isTurn = node.matches?.('[data-testid="conversation-turn"], [data-message-author-role], article[class*="message"], li[class*="message"], div[class*="turn"]');
+            if (isTurn) {
+              seen.add(node);
+              newUserOrAssistantNode = true;
+              console.log('💧 Waterer: Detected new conversation turn in DOM', node);
+            }
+          });
+        }
+      }
+      if (newUserOrAssistantNode) {
+        // throttle this too to avoid double-counting with fetch hook
+        setTimeout(() => {
+          try {
+            safeTrackQuery('chatgpt');
+          } catch (error) {
+            console.error('💧 Waterer: Error tracking via DOM observer', error);
+          }
+        }, 500); // slight delay to let fetch hook fire first
+      }
+    });
+    
+    mo.observe(root, { childList: true, subtree: true });
+    console.log('💧 Waterer: MutationObserver active on', root);
+  }
+  
   // start tracking AI queries
   function startTracking() {
     console.log('💧 Waterer: startTracking() called on', window.location.hostname);
     
-    // monitor network requests for AI services
+    // method 1: inject fetch hook into page context (most reliable)
+    injectFetchHook();
+    setupMessageListener();
+    
+    // method 2: detect Google AI Overviews (for Google search pages)
+    if (window.location.hostname.includes('google.com') || window.location.hostname.includes('google.')) {
+      observeGoogleAIOverview();
+    }
+    
+    // method 3: observe DOM for new messages (fallback)
+    observeSendsViaDOM();
+    
+    // method 3: keep old network monitoring as additional fallback
     const originalFetch = window.fetch;
     window.fetch = async function(...args) {
       const response = await originalFetch.apply(this, args);
@@ -326,7 +564,7 @@
       if (args[0]) {
         const url = args[0]?.toString() || '';
         if (checkForAIQuery(url, response)) {
-          console.log('💧 Waterer: Detected AI query in fetch', url);
+          console.log('💧 Waterer: Detected AI query in fetch (content script)', url);
         }
       }
       return response;
@@ -892,19 +1130,44 @@
     }
   }
   
-  // estimate query size (placeholder - needs research-based calculation)
-  function estimateQuerySize() {
-    // default estimation: ~50ml per query
-    // this should be replaced with research-based calculations
-    return 50;
+  // accurate water usage per AI query (in ml)
+  // based on research: GPT = 0.000085 gallons, Gemini = 0.0000687 gallons
+  // 1 gallon = 3785.41 ml
+  const WATER_USAGE_PER_QUERY = {
+    'chatgpt': 0.000085 * 3785.41,      // ~0.322 ml per query
+    'openai': 0.000085 * 3785.41,       // ~0.322 ml per query
+    'gpt': 0.000085 * 3785.41,          // ~0.322 ml per query
+    'gemini': 0.0000687 * 3785.41,       // ~0.260 ml per query
+    'google': 0.0000687 * 3785.41,       // ~0.260 ml per query
+    'bard': 0.0000687 * 3785.41,        // ~0.260 ml per query
+    'claude': 0.00007 * 3785.41,        // ~0.265 ml per query (average)
+    'anthropic': 0.00007 * 3785.41,     // ~0.265 ml per query
+    'default': 0.00007 * 3785.41         // ~0.265 ml per query (average for other AI)
+  };
+  
+  // estimate query size based on model
+  function estimateQuerySize(model = 'default') {
+    // normalize model name
+    const modelLower = (model || 'default').toLowerCase();
+    
+    // find matching model or use default
+    let usage = WATER_USAGE_PER_QUERY.default;
+    for (const [key, value] of Object.entries(WATER_USAGE_PER_QUERY)) {
+      if (modelLower.includes(key)) {
+        usage = value;
+        break;
+      }
+    }
+    
+    // round to 4 decimal places for accuracy
+    return Math.round(usage * 10000) / 10000;
   }
   
-  function estimateQuerySizeFromText(text) {
-    // estimate based on text length
-    // rough estimate: 10ml per 100 characters
-    const baseUsage = 20; // minimum
-    const charBasedUsage = Math.floor(text.length / 100) * 10;
-    return baseUsage + charBasedUsage;
+  function estimateQuerySizeFromText(text, model = 'default') {
+    // base usage per query (doesn't vary much with text length for AI)
+    // AI queries have relatively consistent water usage regardless of length
+    // because the computation is similar
+    return estimateQuerySize(model);
   }
   
   // track a query
@@ -1066,14 +1329,14 @@
     }, 5000);
   }
   
-  // format water usage
+  // format water usage with up to 4 decimal places (removes trailing zeros)
   function formatWaterUsage(ml) {
     if (ml < 1000) {
-      return `${ml} ml`;
+      return `${parseFloat(ml.toFixed(4))} ml`;
     } else if (ml < 1000000) {
-      return `${(ml / 1000).toFixed(1)} L`;
+      return `${parseFloat((ml / 1000).toFixed(4))} L`;
     } else {
-      return `${(ml / 1000000).toFixed(2)} m³`;
+      return `${parseFloat((ml / 1000000).toFixed(4))} m³`;
     }
   }
   
@@ -1196,6 +1459,18 @@
       });
     });
     return Array.from(textareas);
+  };
+  
+  // expose function to simulate a fake send (for testing)
+  window.watererFakeSend = async function() {
+    console.log('💧 Waterer: Simulating fake send');
+    try {
+      await fetch('https://chatgpt.com/backend-api/conversation', { method: 'POST', body: '{}' });
+    } catch (error) {
+      console.log('💧 Waterer: Fake send failed (expected)', error);
+      // trigger manually anyway for testing
+      safeTrackQuery('chatgpt');
+    }
   };
   
   // initialize when DOM is ready
