@@ -37,11 +37,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   
   // load unit preference
-  chrome.storage.local.get(['waterUnit'], (result) => {
+  chrome.storage.local.get(['waterUnit'], async (result) => {
     if (result.waterUnit && ['ml', 'gallons', 'ounces'].includes(result.waterUnit)) {
       currentUnit = result.waterUnit;
       updateUnitToggleButton();
-      updateDashboard();
+      await updateDashboard();
     }
   });
   
