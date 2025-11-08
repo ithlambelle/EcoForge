@@ -164,6 +164,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           surveyWaterDisplay.remove();
         }
         
+        // reset dashboard stats to zero before hiding
+        document.getElementById('today-usage').textContent = formatWaterUsage(0);
+        document.getElementById('week-usage').textContent = formatWaterUsage(0);
+        document.getElementById('total-usage').textContent = formatWaterUsage(0);
+        document.getElementById('avg-usage').textContent = formatWaterUsage(0);
+        document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
+        document.getElementById('comparison-message').className = 'comparison-card';
+        
         // show survey, hide dashboard
         surveyContainer.style.display = 'block';
         dashboardContainer.classList.remove('show');

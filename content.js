@@ -1840,10 +1840,13 @@
   try {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.type === 'resetData') {
+        // reset local variables first
+        queryCount = 0;
+        totalWaterUsage = 0;
+        
         // hide UI elements when data is reset and reset their values
         if (squareElement) {
-          squareElement.style.display = 'none';
-          // reset the display values to 0
+          // reset the display values to 0 immediately
           const countEl = squareElement.querySelector('.query-count');
           const usageEl = squareElement.querySelector('.water-usage');
           if (countEl) {
@@ -1857,32 +1860,37 @@
               mlValue.remove();
             }
           }
+          // hide the square
+          squareElement.style.display = 'none';
         }
         if (bottleElement) {
-          const container = document.querySelector('.water-bottle-container');
-          if (container) {
-            container.style.display = 'none';
-          }
-          // reset bottle fill to 0
+          // reset bottle fill to 0 immediately
           const waterFill = bottleElement.querySelector('.water-fill');
           if (waterFill) {
             waterFill.style.height = '0%';
           }
+          const container = document.querySelector('.water-bottle-container');
+          if (container) {
+            container.style.display = 'none';
+          }
         }
-        // reset local variables
-        queryCount = 0;
-        totalWaterUsage = 0;
         
         // force update displays with zero values to ensure they're reset
         // wait a bit for storage to be cleared, then update
         setTimeout(async () => {
           try {
-            // verify storage is cleared
+            // verify storage is cleared and force update displays
             const data = await chrome.storage.local.get(['dailyUsage', 'queries', 'surveyCompleted']);
-            if (!data.surveyCompleted && squareElement) {
-              // storage is cleared, force update displays
-              await updateSquareDisplay();
-              await updateBottleDisplay();
+            if (!data.surveyCompleted) {
+              // storage is cleared, force update displays with zero values
+              queryCount = 0;
+              totalWaterUsage = 0;
+              if (squareElement) {
+                await updateSquareDisplay();
+              }
+              if (bottleElement) {
+                await updateBottleDisplay();
+              }
             }
           } catch (error) {
             // ignore errors
