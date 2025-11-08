@@ -92,6 +92,21 @@
     // make draggable
     makeDraggable(squareElement);
     
+    // load saved unit preference
+    chrome.storage.local.get(['waterUnit'], (result) => {
+      if (result.waterUnit && ['ml', 'gallons', 'ounces'].includes(result.waterUnit)) {
+        currentUnit = result.waterUnit;
+        updateUnitToggleButton();
+        updateSquareDisplay();
+      }
+    });
+    
+    // unit toggle button
+    squareElement.querySelector('.unit-toggle-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleUnit();
+    });
+    
     // close button - hide instead of remove
     squareElement.querySelector('.close-btn').addEventListener('click', (e) => {
       e.stopPropagation();
