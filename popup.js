@@ -659,7 +659,7 @@ async function formatWaterUsage(ml, unit = null) {
   }
 }
 
-function updateComparisonMessage(dailyUsage, averageUsage) {
+async function updateComparisonMessage(dailyUsage, averageUsage) {
   const comparisonCard = document.getElementById('comparison-message');
   const comparisonText = document.getElementById('comparison-text');
   
