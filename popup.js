@@ -62,10 +62,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
       
-      // if surveyCompleted is removed or set to false, reset dashboard
+      // if surveyCompleted changes, update UI accordingly
       if (changes.surveyCompleted) {
         const newValue = changes.surveyCompleted.newValue;
-        if (!newValue) {
+        const oldValue = changes.surveyCompleted.oldValue;
+        
+        console.log('💧 DropQuery: surveyCompleted changed', {
+          oldValue,
+          newValue
+        });
+        
+        if (newValue === true && oldValue !== true) {
+          // survey was just completed - switch to dashboard
+          console.log('💧 DropQuery: Survey completed detected, switching to dashboard');
+          showDashboard();
+          await updateDashboard();
+        } else if (!newValue) {
           // survey was reset, update dashboard to show zeros
           const zeroFormatted = await formatWaterUsage(0);
           document.getElementById('today-usage').textContent = zeroFormatted;
@@ -74,6 +86,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           document.getElementById('avg-usage').textContent = zeroFormatted;
           document.getElementById('comparison-text').textContent = 'Track your first query to see your impact!';
           document.getElementById('comparison-message').className = 'comparison-card';
+          
+          // switch back to survey if dashboard is showing
+          if (dashboardContainer.classList.contains('show')) {
+            surveyContainer.style.display = 'block';
+            dashboardContainer.classList.remove('show');
+            dashboardContainer.style.display = 'none';
+          }
         }
       }
       // update dashboard when usage data changes
@@ -125,37 +144,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
-  // check if user has completed survey
-  const surveyData = await chrome.storage.local.get(['surveyCompleted', 'userData', 'dailyUsage', 'isResetting']);
-  
-  console.log('💧 Waterer: Initial state check', {
-    surveyCompleted: surveyData.surveyCompleted,
-    isResetting: surveyData.isResetting,
-    hasUserData: !!surveyData.userData
-  });
-  
-  // if isResetting is true, clear it (shouldn't happen, but just in case)
-  if (surveyData.isResetting) {
-    console.log('💧 Waterer: Clearing stuck isResetting flag');
-    await chrome.storage.local.set({ isResetting: false });
+  // function to check state and update UI accordingly
+  async function checkStateAndUpdateUI() {
+    const surveyData = await chrome.storage.local.get(['surveyCompleted', 'userData', 'dailyUsage', 'isResetting']);
+    
+    console.log('💧 DropQuery: State check', {
+      surveyCompleted: surveyData.surveyCompleted,
+      isResetting: surveyData.isResetting,
+      hasUserData: !!surveyData.userData
+    });
+    
+    // if isResetting is true, clear it (shouldn't happen, but just in case)
+    if (surveyData.isResetting) {
+      console.log('💧 DropQuery: Clearing stuck isResetting flag');
+      await chrome.storage.local.set({ isResetting: false });
+    }
+    
+    if (surveyData.surveyCompleted) {
+      console.log('💧 DropQuery: Survey completed, showing dashboard');
+      showDashboard();
+      await updateDashboard();
+    } else {
+      console.log('💧 DropQuery: Survey not completed, showing survey form');
+      surveyContainer.style.display = 'block';
+      dashboardContainer.style.display = 'none';
+      
+      // initialize survey water usage tracking
+      let surveyWaterUsage = surveyData.dailyUsage || 0;
+      await updateSurveyWaterDisplay(surveyWaterUsage);
+      
+      // add incremental water usage as questions are answered
+      setupSurveyIncrements(surveyWaterUsage);
+    }
   }
   
-  if (surveyData.surveyCompleted) {
-    console.log('💧 Waterer: Survey already completed, showing dashboard');
-    showDashboard();
-    await updateDashboard();
-  } else {
-    console.log('💧 Waterer: Survey not completed, showing survey form');
-    surveyContainer.style.display = 'block';
-    dashboardContainer.style.display = 'none';
-    
-    // initialize survey water usage tracking
-    let surveyWaterUsage = surveyData.dailyUsage || 0;
-    await updateSurveyWaterDisplay(surveyWaterUsage);
-    
-    // add incremental water usage as questions are answered
-    setupSurveyIncrements(surveyWaterUsage);
-  }
+  // initial state check
+  await checkStateAndUpdateUI();
   
   // handle survey submission
   surveyForm.addEventListener('submit', async (e) => {
