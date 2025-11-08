@@ -1542,7 +1542,7 @@
     if (!averageUsage || averageUsage === 0) {
       console.log('💧 Waterer: Showing educational message (average is 0)');
       // calculate real-world impact for educational purposes
-      const childDailyNeed = 2000; // ~2L per child per day
+      const childDailyNeed = 236.588; // 8 oz per child per day (1 oz = 29.5735 ml, 8 oz = 236.588 ml)
       const adultDailyNeed = 3000; // average: 3L per adult per day
       const dogDailyNeed = 1500;    // ~1.5L per 50lb dog per day
       const catDailyNeed = 250;     // ~0.25L per 10lb cat per day
@@ -1589,7 +1589,7 @@
     }
     
     // accurate water needs (from research data)
-    const childDailyNeed = 2000; // ~2L per child per day
+    const childDailyNeed = 236.588; // 8 oz per child per day (1 oz = 29.5735 ml, 8 oz = 236.588 ml)
     const adultDailyNeed = 3000; // average: 3L per adult per day
     const dogDailyNeed = 1500;    // ~1.5L per 50lb dog per day
     const catDailyNeed = 250;     // ~0.25L per 10lb cat per day

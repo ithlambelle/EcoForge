@@ -339,7 +339,7 @@ function updateComparisonMessage(dailyUsage, averageUsage) {
     } else {
       // user has usage but no average yet - show educational impact
       const adultDailyNeed = 3000; // average: 3L per adult per day
-      const childDailyNeed = 2000; // ~2L per child per day
+      const childDailyNeed = 236.588; // 8 oz per child per day (1 oz = 29.5735 ml, 8 oz = 236.588 ml)
       const dogDailyNeed = 1500;    // ~1.5L per 50lb dog per day
       const catDailyNeed = 250;     // ~0.25L per 10lb cat per day
       
@@ -376,10 +376,11 @@ function updateComparisonMessage(dailyUsage, averageUsage) {
   
   // accurate water needs (from research data)
   // Adult men: 3.7L/day = 3700ml, Adult women: 2.7L/day = 2700ml
+  // Child: 8 oz per day = 236.588 ml (1 oz = 29.5735 ml)
   // 50lb dog: ~0.39 gallons = 1476ml, 10lb cat: ~0.07 gallons = 265ml
   // Animal shelter: ~50-100L per day for multiple animals
   const adultDailyNeed = 3000; // average: 3L per adult per day
-  const childDailyNeed = 2000; // ~2L per child per day
+  const childDailyNeed = 236.588; // 8 oz per child per day (1 oz = 29.5735 ml, 8 oz = 236.588 ml)
   const dogDailyNeed = 1500;    // ~1.5L per 50lb dog per day
   const catDailyNeed = 250;     // ~0.25L per 10lb cat per day
   const animalShelterDailyNeed = 50000; // ~50L per animal shelter per day
