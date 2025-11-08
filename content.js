@@ -1510,8 +1510,18 @@
       }
     }
     
-    // show message (use calculated average)
-    showMessage(dailyUsage, userData.averageUsage || 0);
+    // show message (use calculated average) - get fresh data to ensure we have latest average
+    // use setTimeout to ensure message shows after UI updates
+    setTimeout(async () => {
+      try {
+        const latestData = await chrome.storage.local.get(['dailyUsage', 'userData']);
+        const latestDailyUsage = latestData.dailyUsage || dailyUsage;
+        const latestUserData = latestData.userData || userData;
+        showMessage(latestDailyUsage, latestUserData.averageUsage || 0);
+      } catch (error) {
+        console.warn('💧 Waterer: Error showing message', error);
+      }
+    }, 100);
   }
   
   // show reinforcement message
