@@ -10,6 +10,7 @@
   let totalWaterUsage = 0;
   let isDragging = false;
   let dragOffset = { x: 0, y: 0 };
+  let currentUnit = 'ml'; // 'ml', 'gallons', 'ounces'
   
   // dedupe/throttle to prevent overcounting
   let lastHit = 0;
@@ -45,6 +46,13 @@
       // create UI elements
       createSquare();
       createWaterBottle();
+      
+      // ensure displays are updated with fresh data from storage
+      // wait a bit to ensure storage is ready
+      setTimeout(async () => {
+        await updateSquareDisplay();
+        await updateBottleDisplay();
+      }, 100);
       
       // start tracking
       startTracking();
@@ -89,6 +97,49 @@
     
     // make draggable
     makeDraggable(squareElement);
+    
+    // load saved unit preference and listen for changes
+    chrome.storage.local.get(['waterUnit'], (result) => {
+      if (result.waterUnit && ['ml', 'gallons', 'ounces'].includes(result.waterUnit)) {
+        currentUnit = result.waterUnit;
+        updateSquareDisplay();
+        updateBottleDisplay();
+      }
+    });
+    
+    // listen for storage changes (unit changes and data resets)
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === 'local') {
+        // handle unit changes
+        if (changes.waterUnit) {
+          const newUnit = changes.waterUnit.newValue;
+          if (['ml', 'gallons', 'ounces'].includes(newUnit)) {
+            currentUnit = newUnit;
+            updateSquareDisplay();
+            updateBottleDisplay();
+          }
+        }
+        
+        // handle resetting flag
+        if (changes.isResetting) {
+          if (changes.isResetting.newValue === false) {
+            // reset complete, ensure UI is reset
+            resetUIToZero();
+          }
+        }
+        
+        // handle data reset (surveyCompleted removed or set to false)
+        if (changes.surveyCompleted) {
+          const newValue = changes.surveyCompleted.newValue;
+          const oldValue = changes.surveyCompleted.oldValue;
+          
+          // if surveyCompleted was true and is now false/undefined, data was reset
+          if (oldValue === true && (newValue === false || newValue === undefined)) {
+            resetUIToZero();
+          }
+        }
+      }
+    });
     
     // close button - hide instead of remove
     squareElement.querySelector('.close-btn').addEventListener('click', (e) => {
@@ -231,10 +282,15 @@
         return; // extension context invalidated
       }
       
-      // get latest data from storage to ensure accuracy
-      const data = await chrome.storage.local.get(['dailyUsage', 'queries']);
+      // get latest data from storage to ensure accuracy, including unit preference
+      const data = await chrome.storage.local.get(['dailyUsage', 'queries', 'waterUnit']);
       const currentCount = data.queries?.length || queryCount;
       const currentUsage = data.dailyUsage || totalWaterUsage;
+      
+      // update currentUnit from storage if available
+      if (data.waterUnit && ['ml', 'gallons', 'ounces'].includes(data.waterUnit)) {
+        currentUnit = data.waterUnit;
+      }
     
     const countEl = squareElement.querySelector('.query-count');
     const usageEl = squareElement.querySelector('.water-usage');
@@ -255,12 +311,28 @@
       }, 300);
     }
     if (usageEl) {
-      // format water usage and add ml suffix
-      // calculate bottles based on 5ml capacity (1 bottle = 5ml)
-      const bottles = Math.floor(currentUsage / 5);
-      const formatted = formatWaterUsage(currentUsage);
-      // extract just the number part (before the unit)
-      const numberPart = formatted.split(' ')[0];
+      // get unit from storage to ensure accuracy
+      const unitData = await chrome.storage.local.get(['waterUnit']);
+      const unitToUse = unitData.waterUnit || currentUnit || 'ml';
+      
+      // update currentUnit for consistency
+      if (unitData.waterUnit && ['ml', 'gallons', 'ounces'].includes(unitData.waterUnit)) {
+        currentUnit = unitData.waterUnit;
+      }
+      
+      // format water usage based on selected unit (now async)
+      const formatted = await formatWaterUsage(currentUsage, unitToUse);
+      const parts = formatted.split(' ');
+      const numberPart = parts[0];
+      // get unit label - formatWaterUsage might return "L" or "m³" for ml, so check parts
+      let unitLabel = parts[1];
+      if (!unitLabel || (unitLabel === 'L' || unitLabel === 'm³')) {
+        // if formatWaterUsage returned L or m³, use that, otherwise use the selected unit label
+        unitLabel = parts[1] || getUnitLabel(unitToUse);
+      }
+      
+      // calculate bottles based on 5ml capacity (only show if unit is ml)
+      const bottles = unitToUse === 'ml' ? Math.floor(currentUsage / 5) : 0;
       
       // create or get suffix element
       let suffix = usageEl.querySelector('.suffix');
@@ -269,15 +341,29 @@
         suffix.className = 'suffix';
       }
       
-      // show bottles if >= 1 bottle, otherwise show ml
-      if (bottles >= 1) {
-        suffix.textContent = ` bottles (${numberPart} ml)`;
+      // show bottles if >= 1 bottle and unit is ml, otherwise show converted value
+      if (bottles >= 1 && unitToUse === 'ml') {
+        const bottleText = bottles === 1 ? 'bottle' : 'bottles';
+        // format: "2 bottles" on main line, "10.823 ml" as smaller suffix
+        usageEl.innerHTML = `${bottles} <span class="suffix">${bottleText}</span>`;
+        // add ml value as a separate smaller element below
+        let mlValue = usageEl.querySelector('.ml-value');
+        if (!mlValue) {
+          mlValue = document.createElement('div');
+          mlValue.className = 'ml-value';
+          mlValue.style.cssText = 'font-size: 8px; opacity: 0.7; margin-top: 2px;';
+          usageEl.appendChild(mlValue);
+        }
+        mlValue.textContent = `${numberPart} ${unitLabel}`;
       } else {
-        suffix.textContent = ' ml';
+        // show converted value directly
+        suffix.textContent = ` ${unitLabel}`;
+        usageEl.innerHTML = `${numberPart}`;
+        usageEl.appendChild(suffix);
+        // remove ml-value if it exists
+        const mlValue = usageEl.querySelector('.ml-value');
+        if (mlValue) mlValue.remove();
       }
-      
-      usageEl.innerHTML = bottles >= 1 ? `${bottles} ` : `${numberPart} `;
-      usageEl.appendChild(suffix);
     }
     
       // update local variables
@@ -291,14 +377,78 @@
     }
   }
   
+  // conversion constants (accurate US fluid measurements)
+  const ML_TO_GALLON = 3785.41;  // 1 US gallon = 3785.41 ml
+  const ML_TO_OUNCE = 29.5735;   // 1 US fluid ounce = 29.5735 ml
+  
+  // convert ml to selected unit
+  function convertToUnit(ml, unit) {
+    switch(unit) {
+      case 'gallons':
+        return ml / ML_TO_GALLON;
+      case 'ounces':
+        return ml / ML_TO_OUNCE;
+      case 'ml':
+      default:
+        return ml;
+    }
+  }
+  
+  // get unit label
+  function getUnitLabel(unit) {
+    switch(unit) {
+      case 'gallons':
+        return 'gal';
+      case 'ounces':
+        return 'oz';
+      case 'ml':
+      default:
+        return 'ml';
+    }
+  }
+  
+  // toggle between units: ml -> gallons -> ounces -> ml
+  function toggleUnit() {
+    const units = ['ml', 'gallons', 'ounces'];
+    const currentIndex = units.indexOf(currentUnit);
+    currentUnit = units[(currentIndex + 1) % units.length];
+    
+    // save preference
+    chrome.storage.local.set({ waterUnit: currentUnit }).catch(() => {});
+    
+    updateSquareDisplay();
+  }
+  
   // helper function to format water usage with up to 4 decimal places (removes trailing zeros)
-  function formatWaterUsage(ml) {
-    if (ml < 1000) {
-      return `${parseFloat(ml.toFixed(4))} ml`;
-    } else if (ml < 1000000) {
-      return `${parseFloat((ml / 1000).toFixed(4))} L`;
+  // always reads unit from storage to ensure accuracy
+  async function formatWaterUsage(ml, unit = null) {
+    // if unit not provided, read from storage
+    let targetUnit = unit;
+    if (!targetUnit) {
+      try {
+        const data = await chrome.storage.local.get(['waterUnit']);
+        targetUnit = data.waterUnit || currentUnit || 'ml';
+      } catch (error) {
+        targetUnit = currentUnit || 'ml';
+      }
+    }
+    
+    const converted = convertToUnit(ml, targetUnit);
+    const unitLabel = getUnitLabel(targetUnit);
+    
+    // format based on magnitude
+    if (targetUnit === 'ml') {
+      if (ml < 1000) {
+        return `${parseFloat(ml.toFixed(4))} ${unitLabel}`;
+      } else if (ml < 1000000) {
+        return `${parseFloat((ml / 1000).toFixed(4))} L`;
+      } else {
+        return `${parseFloat((ml / 1000000).toFixed(4))} m³`;
+      }
     } else {
-      return `${parseFloat((ml / 1000000).toFixed(4))} m³`;
+      // for gallons and ounces, show with appropriate decimal places
+      const decimals = converted < 1 ? 4 : (converted < 10 ? 3 : 2);
+      return `${parseFloat(converted.toFixed(decimals))} ${unitLabel}`;
     }
   }
   
@@ -338,17 +488,25 @@
       
       if (useGallon && !bottleElement.classList.contains('gallon')) {
         bottleElement.classList.add('gallon');
-        const label = bottleElement.querySelector('.bottle-label');
-        if (label) label.textContent = '1 Gallon';
       } else if (!useGallon && bottleElement.classList.contains('gallon')) {
         bottleElement.classList.remove('gallon');
-        const label = bottleElement.querySelector('.bottle-label');
-        if (label) label.textContent = '5ml';
-      } else if (!useGallon) {
-        // ensure label is set to 5ml
-        const label = bottleElement.querySelector('.bottle-label');
-        if (label && label.textContent !== '5ml') {
-          label.textContent = '5ml';
+      }
+      
+      // update label with selected unit (read from storage)
+      const unitData = await chrome.storage.local.get(['waterUnit']);
+      const unitToUse = unitData.waterUnit || currentUnit || 'ml';
+      if (unitData.waterUnit && ['ml', 'gallons', 'ounces'].includes(unitData.waterUnit)) {
+        currentUnit = unitData.waterUnit;
+      }
+      
+      const label = bottleElement.querySelector('.bottle-label');
+      if (label) {
+        if (useGallon) {
+          const gallonLabel = await formatWaterUsage(3785.41, unitToUse);
+          label.textContent = gallonLabel;
+        } else {
+          const mlLabel = await formatWaterUsage(5, unitToUse);
+          label.textContent = mlLabel;
         }
       }
       
@@ -381,64 +539,74 @@
   }
   
   // inject fetch hook into page context (most reliable method)
+  // uses external script file to avoid CSP violations from inline scripts
   function injectFetchHook() {
     console.log('💧 Waterer: Injecting fetch hook into page context');
-    const s = document.createElement('script');
-    s.textContent = `
-      (function(){
-        const _fetch = window.fetch;
-        window.fetch = async function(input, init){
-          try {
-            const url = (typeof input === 'string') ? input : (input && input.url) || '';
-            const method = (init && init.method) || (input && input.method) || 'GET';
-            // detect ChatGPT message send
-            const looksLikeChatGPT = method === 'POST' && (/\\/backend-api\\/conversation/.test(url) || /\\/backend-anon\\/conversation/.test(url));
-            // detect Google AI Overview / Gemini
-            const looksLikeGoogleAI = method === 'POST' && (/generativelanguage\\.googleapis\\.com/.test(url) || /\\/v1\\/models/.test(url) || /gemini/.test(url) || /ai\\.google\\.dev/.test(url));
-            
-            if (looksLikeChatGPT) {
-              console.log('💧 Waterer [page]: Detected POST to conversation endpoint', url);
-              window.postMessage({ type: 'waterer:send-start', url: url, model: 'chatgpt' }, '*');
-            } else if (looksLikeGoogleAI) {
-              console.log('💧 Waterer [page]: Detected Google AI/Gemini request', url);
-              window.postMessage({ type: 'waterer:send-start', url: url, model: 'gemini' }, '*');
+    try {
+      // get extension ID dynamically
+      const scriptUrl = chrome.runtime.getURL('fetch-hook.js');
+      
+      const s = document.createElement('script');
+      s.src = scriptUrl;
+      s.onerror = () => {
+        console.warn('💧 Waterer: Failed to load fetch-hook.js, falling back to inline injection');
+        // fallback: try inline injection if external file fails
+        const fallback = document.createElement('script');
+        fallback.textContent = `
+          (function(){
+            const _fetch = window.fetch;
+            window.fetch = async function(input, init){
+              try {
+                const url = (typeof input === 'string') ? input : (input && input.url) || '';
+                const method = (init && init.method) || (input && input.method) || 'GET';
+                const looksLikeChatGPT = method === 'POST' && (/\\/backend-api\\/conversation/.test(url) || /\\/backend-anon\\/conversation/.test(url));
+                const looksLikeGoogleAI = method === 'POST' && (/generativelanguage\\.googleapis\\.com/.test(url) || /\\/v1\\/models/.test(url) || /gemini/.test(url) || /ai\\.google\\.dev/.test(url));
+                if (looksLikeChatGPT) {
+                  window.postMessage({ type: 'waterer:send-start', url: url, model: 'chatgpt' }, '*');
+                } else if (looksLikeGoogleAI) {
+                  window.postMessage({ type: 'waterer:send-start', url: url, model: 'gemini' }, '*');
+                }
+                const resp = await _fetch.apply(this, arguments);
+                if (looksLikeChatGPT && resp.ok) {
+                  window.postMessage({ type: 'waterer:send-ok', url: url, model: 'chatgpt' }, '*');
+                } else if (looksLikeGoogleAI && resp.ok) {
+                  window.postMessage({ type: 'waterer:send-ok', url: url, model: 'gemini' }, '*');
+                }
+                return resp;
+              } catch (e) {
+                return (typeof _fetch === 'function') ? _fetch.apply(this, arguments) : Promise.reject(e);
+              }
+            };
+            const _sb = navigator.sendBeacon;
+            if (_sb) {
+              navigator.sendBeacon = function(url, data){
+                const looksLikeChatGPT = /\\/backend-api\\/conversation/.test(url) || /\\/backend-anon\\/conversation/.test(url);
+                const looksLikeGoogleAI = /generativelanguage\\.googleapis\\.com/.test(url) || /\\/v1\\/models/.test(url) || /gemini/.test(url) || /ai\\.google\\.dev/.test(url);
+                if (looksLikeChatGPT) {
+                  window.postMessage({ type: 'waterer:send-start', url: url, model: 'chatgpt' }, '*');
+                  setTimeout(() => {
+                    window.postMessage({ type: 'waterer:send-ok', url: url, model: 'chatgpt' }, '*');
+                  }, 100);
+                } else if (looksLikeGoogleAI) {
+                  window.postMessage({ type: 'waterer:send-start', url: url, model: 'gemini' }, '*');
+                  setTimeout(() => {
+                    window.postMessage({ type: 'waterer:send-ok', url: url, model: 'gemini' }, '*');
+                  }, 100);
+                }
+                return _sb.apply(this, arguments);
+              };
             }
-            
-            const resp = await _fetch.apply(this, arguments);
-            if (looksLikeChatGPT && resp.ok) {
-              console.log('💧 Waterer [page]: Conversation POST succeeded');
-              window.postMessage({ type: 'waterer:send-ok', url: url, model: 'chatgpt' }, '*');
-            } else if (looksLikeGoogleAI && resp.ok) {
-              console.log('💧 Waterer [page]: Google AI request succeeded');
-              window.postMessage({ type: 'waterer:send-ok', url: url, model: 'gemini' }, '*');
-            }
-            return resp;
-          } catch (e) {
-            return (typeof _fetch === 'function') ? _fetch.apply(this, arguments) : Promise.reject(e);
-          }
-        };
-        // also cover sendBeacon
-        const _sb = navigator.sendBeacon;
-        if (_sb) {
-          navigator.sendBeacon = function(url, data){
-            const looksLikeChatGPT = /\\/backend-api\\/conversation/.test(url) || /\\/backend-anon\\/conversation/.test(url);
-            const looksLikeGoogleAI = /generativelanguage\\.googleapis\\.com/.test(url) || /gemini/.test(url) || /ai\\.google\\.dev/.test(url);
-            
-            if (looksLikeChatGPT) {
-              console.log('💧 Waterer [page]: Detected sendBeacon to conversation endpoint', url);
-              window.postMessage({ type: 'waterer:send-start', url: url, model: 'chatgpt' }, '*');
-            } else if (looksLikeGoogleAI) {
-              console.log('💧 Waterer [page]: Detected sendBeacon to Google AI endpoint', url);
-              window.postMessage({ type: 'waterer:send-start', url: url, model: 'gemini' }, '*');
-            }
-            return _sb.apply(this, arguments);
-          };
-        }
-      })();
-    `;
-    (document.head || document.documentElement).appendChild(s);
-    s.remove();
-    console.log('💧 Waterer: Fetch hook injected');
+          })();
+        `;
+        (document.head || document.documentElement).appendChild(fallback);
+        fallback.remove();
+      };
+      (document.head || document.documentElement).appendChild(s);
+      s.remove();
+      console.log('💧 Waterer: Fetch hook injected');
+    } catch (e) {
+      console.error('💧 Waterer: Error injecting fetch hook', e);
+    }
   }
   
   // listen for page->content notifications from fetch hook
@@ -640,12 +808,12 @@
           if (text.length > 0) {
             // track immediately, don't wait
             try {
-              if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+              if (isChromeContextValid()) {
                 const waterUsage = estimateQuerySizeFromText(text);
                 console.log('💧 Waterer: Calling trackQuery immediately', { model: 'chatgpt', waterUsage, textLength: text.length });
                 trackQuery('chatgpt', waterUsage);
               } else {
-                console.warn('💧 Waterer: Chrome runtime not available');
+                // chrome runtime not available - silently skip (expected when extension context invalidated)
               }
             } catch (error) {
               console.error('💧 Waterer: Error in trackQuery call', error);
@@ -684,7 +852,7 @@
           console.log('💧 Waterer: Form submitted, text length:', text.length, 'text:', text.substring(0, 50));
           if (text.length > 0) {
             try {
-              if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+              if (isChromeContextValid()) {
                 console.log('💧 Waterer: Calling trackQuery from form submit', { model: 'chatgpt', textLength: text.length });
                 trackQuery('chatgpt', estimateQuerySizeFromText(text));
               }
@@ -726,7 +894,7 @@
                 if (text.length > 0) {
                   // track immediately
                   try {
-                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+                    if (isChromeContextValid()) {
                       const waterUsage = estimateQuerySizeFromText(text);
                       console.log('💧 Waterer: Calling trackQuery from button immediately', { model: 'chatgpt', waterUsage, textLength: text.length });
                       trackQuery('chatgpt', waterUsage);
@@ -778,8 +946,8 @@
     // check immediately and periodically
     const checkAndAttach = () => {
       try {
-        if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) {
-          console.warn('💧 Waterer: Chrome runtime not available in checkAndAttach');
+        // silently return if chrome context is invalid (expected when extension is reloaded)
+        if (!isChromeContextValid()) {
           return;
         }
         
@@ -881,7 +1049,7 @@
                     setTimeout(() => {
                       try {
                         // check if extension context is still valid
-                        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+                        if (isChromeContextValid()) {
                           const modelName = detectAIModelFromDomain(domain);
                           trackQuery(modelName, estimateQuerySize());
                         }
@@ -917,22 +1085,41 @@
     return 'ai-service';
   }
   
+  // helper to safely check if chrome APIs are available
+  function isChromeContextValid() {
+    try {
+      return typeof chrome !== 'undefined' && 
+             chrome.runtime && 
+             chrome.runtime.id && 
+             chrome.storage && 
+             chrome.storage.local;
+    } catch (error) {
+      return false;
+    }
+  }
+  
   // observe generic AI chat interfaces (works on any site)
   function observeGenericAIChat() {
     const observer = new MutationObserver(() => {
-      // look for common AI chat patterns
-      const chatInputs = document.querySelectorAll(
-        'textarea[placeholder*="message" i], ' +
-        'textarea[placeholder*="chat" i], ' +
-        'textarea[placeholder*="ask" i], ' +
-        'textarea[placeholder*="prompt" i], ' +
-        'input[type="text"][placeholder*="message" i], ' +
-        'div[contenteditable="true"][role="textbox"], ' +
-        'div[class*="chat-input"], ' +
-        'div[class*="message-input"]'
-      );
+      // check chrome context before doing anything
+      if (!isChromeContextValid()) {
+        return; // extension context invalidated, stop observing
+      }
       
-      chatInputs.forEach(input => {
+      try {
+        // look for common AI chat patterns
+        const chatInputs = document.querySelectorAll(
+          'textarea[placeholder*="message" i], ' +
+          'textarea[placeholder*="chat" i], ' +
+          'textarea[placeholder*="ask" i], ' +
+          'textarea[placeholder*="prompt" i], ' +
+          'input[type="text"][placeholder*="message" i], ' +
+          'div[contenteditable="true"][role="textbox"], ' +
+          'div[class*="chat-input"], ' +
+          'div[class*="message-input"]'
+        );
+        
+        chatInputs.forEach(input => {
         if (!input.hasAttribute('data-waterer-tracked')) {
           input.setAttribute('data-waterer-tracked', 'true');
           
@@ -944,7 +1131,7 @@
                 setTimeout(() => {
                   try {
                     // check if extension context is still valid
-                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+                    if (isChromeContextValid()) {
                       // check if this looks like an AI query
                       if (isLikelyAIQuery(text)) {
                         const modelName = detectAIModelFromDomain(window.location.hostname);
@@ -953,8 +1140,10 @@
                     }
                   } catch (error) {
                     // extension context invalidated - ignore silently
-                    if (!error.message?.includes('Extension context invalidated')) {
-                      console.warn('Waterer: Error tracking query', error);
+                    const errorMsg = error?.message || String(error);
+                    if (!errorMsg.includes('Extension context invalidated') && 
+                        !errorMsg.includes('message handler closed')) {
+                      // only log unexpected errors
                     }
                   }
                 }, 500);
@@ -972,14 +1161,16 @@
                 setTimeout(() => {
                   try {
                     // check if extension context is still valid
-                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+                    if (isChromeContextValid()) {
                       const modelName = detectAIModelFromDomain(window.location.hostname);
                       trackQuery(modelName, estimateQuerySizeFromText(text));
                     }
                   } catch (error) {
                     // extension context invalidated - ignore silently
-                    if (!error.message?.includes('Extension context invalidated')) {
-                      console.warn('Waterer: Error tracking query', error);
+                    const errorMsg = error?.message || String(error);
+                    if (!errorMsg.includes('Extension context invalidated') && 
+                        !errorMsg.includes('message handler closed')) {
+                      // only log unexpected errors
                     }
                   }
                 }, 500);
@@ -988,9 +1179,23 @@
           }
         }
       });
+      } catch (error) {
+        // extension context invalidated or other error - stop observing
+        const errorMsg = error?.message || String(error);
+        if (errorMsg.includes('Extension context invalidated') || 
+            errorMsg.includes('message handler closed')) {
+          observer.disconnect();
+        }
+      }
     });
     
-    observer.observe(document.body, { childList: true, subtree: true });
+    try {
+      if (document.body) {
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
+    } catch (error) {
+      // ignore observation errors
+    }
   }
   
   // check if text input looks like an AI query
@@ -1173,13 +1378,8 @@
   // track a query
   async function trackQuery(model, waterUsage) {
     // check if extension context is still valid
-    try {
-      if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) {
-        return; // extension context invalidated
-      }
-    } catch (error) {
-      // extension context invalidated
-      return;
+    if (!isChromeContextValid()) {
+      return; // extension context invalidated
     }
     
     // prevent duplicate tracking
@@ -1209,10 +1409,23 @@
     let weeklyUsage = data.weeklyUsage || 0;
     let totalUsage = data.totalUsage || 0;
     let queries = data.queries || [];
+    let userData = data.userData || {};
+    let dailyHistory = userData.dailyHistory || [];
     
     // check if it's a new day
     const lastQuery = queries[queries.length - 1];
     if (lastQuery && lastQuery.date !== today) {
+      // save yesterday's usage to history before resetting
+      if (dailyUsage > 0) {
+        dailyHistory.push({
+          date: lastQuery.date,
+          usage: dailyUsage
+        });
+        // keep only last 30 days of history
+        if (dailyHistory.length > 30) {
+          dailyHistory = dailyHistory.slice(-30);
+        }
+      }
       dailyUsage = 0; // reset daily usage
     }
     
@@ -1235,20 +1448,37 @@
     queryCount = queries.length;
     totalWaterUsage = dailyUsage;
     
+    // calculate rolling average from daily history (last 7 days if available, otherwise all history)
+    let averageUsage = 0;
+    if (dailyHistory.length > 0) {
+      const recentHistory = dailyHistory.slice(-7); // last 7 days
+      const totalRecentUsage = recentHistory.reduce((sum, day) => sum + day.usage, 0);
+      averageUsage = totalRecentUsage / recentHistory.length;
+    } else if (dailyUsage > 0) {
+      // if no history yet, use current day as starting point
+      averageUsage = dailyUsage;
+    }
+    
+    // update userData with calculated average and history
+    userData.averageUsage = Math.round(averageUsage * 100) / 100; // round to 2 decimal places
+    userData.dailyHistory = dailyHistory;
+    
     // save to storage
     try {
       await chrome.storage.local.set({
         dailyUsage,
         weeklyUsage: queries.reduce((sum, q) => sum + q.waterUsage, 0),
         totalUsage,
-        queries
+        queries,
+        userData: userData
       });
       
       console.log('💧 Waterer: Updated storage', { dailyUsage, queryCount, totalWaterUsage, queriesCount: queries.length });
       
-      // verify it was saved
+      // verify it was saved (format to avoid floating point precision issues)
       const verify = await chrome.storage.local.get(['dailyUsage']);
-      console.log('💧 Waterer: Verification - saved dailyUsage:', verify.dailyUsage);
+      const formattedDailyUsage = verify.dailyUsage ? parseFloat(verify.dailyUsage.toFixed(4)) : 0;
+      console.log('💧 Waterer: Verification - saved dailyUsage:', formattedDailyUsage);
     } catch (error) {
       console.error('💧 Waterer: Error saving to storage', error);
       return;
@@ -1280,14 +1510,27 @@
       }
     }
     
-    // show message
-    showMessage(dailyUsage, data.userData?.averageUsage || 0);
+    // show message (use calculated average) - get fresh data to ensure we have latest average
+    // use setTimeout to ensure message shows after UI updates
+    setTimeout(async () => {
+      try {
+        const latestData = await chrome.storage.local.get(['dailyUsage', 'userData']);
+        const latestDailyUsage = latestData.dailyUsage || dailyUsage;
+        const latestUserData = latestData.userData || userData;
+        showMessage(latestDailyUsage, latestUserData.averageUsage || 0);
+      } catch (error) {
+        console.warn('💧 Waterer: Error showing message', error);
+      }
+    }, 100);
   }
   
   // show reinforcement message
   async function showMessage(dailyUsage, averageUsage) {
+    console.log('💧 Waterer: showMessage called', { dailyUsage, averageUsage });
+    
     if (messageElement) {
       messageElement.remove();
+      messageElement = null;
     }
     
     messageElement = document.createElement('div');
@@ -1295,14 +1538,73 @@
     
     const difference = averageUsage - dailyUsage;
     
+    // show educational messages if average is 0 (user hasn't established baseline yet)
+    if (!averageUsage || averageUsage === 0) {
+      console.log('💧 Waterer: Showing educational message (average is 0)');
+      // calculate real-world impact for educational purposes
+      const childDailyNeed = 236.588; // 8 oz per child per day (1 oz = 29.5735 ml, 8 oz = 236.588 ml)
+      const adultDailyNeed = 3000; // average: 3L per adult per day
+      const dogDailyNeed = 1500;    // ~1.5L per 50lb dog per day
+      const catDailyNeed = 250;     // ~0.25L per 10lb cat per day
+      
+      const children = Math.floor(dailyUsage / childDailyNeed);
+      const adults = Math.floor(dailyUsage / adultDailyNeed);
+      const dogs = Math.floor(dailyUsage / dogDailyNeed);
+      const cats = Math.floor(dailyUsage / catDailyNeed);
+      
+      // create educational message with real-world impact
+      // get unit from storage for accurate formatting
+      const unitData = await chrome.storage.local.get(['waterUnit']);
+      const unitToUse = unitData.waterUnit || currentUnit || 'ml';
+      
+      let message = '';
+      if (cats >= 1) {
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today could provide clean drinking water for ${cats} ${cats === 1 ? 'cat' : 'cats'} for a day!`;
+      } else if (children >= 1) {
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today could hydrate ${children} ${children === 1 ? 'child' : 'children'} for a day!`;
+      } else if (adults >= 1) {
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today could provide daily water for ${adults} ${adults === 1 ? 'adult' : 'adults'}!`;
+      } else if (dogs >= 1) {
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day!`;
+      } else {
+        // very small usage - show in terms of cats or small impact
+        const catFraction = (dailyUsage / catDailyNeed).toFixed(2);
+        const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+        message = `Your ${formatted} today represents ${catFraction} of a cat's daily water needs. Every drop counts!`;
+      }
+      
+      messageElement.textContent = message;
+      messageElement.classList.add('positive'); // use positive styling for educational messages
+      
+      // ensure body exists and append message
+      if (document.body) {
+        document.body.appendChild(messageElement);
+        console.log('💧 Waterer: Educational message displayed', message);
+      } else {
+        console.warn('💧 Waterer: document.body not available, cannot show message');
+      }
+      
+      setTimeout(() => {
+        if (messageElement && messageElement.parentNode) {
+          messageElement.remove();
+          messageElement = null;
+        }
+      }, 10000); // increased to 10 seconds
+      return;
+    }
+    
     // accurate water needs (from research data)
-    const childDailyNeed = 2000; // ~2L per child per day
+    const childDailyNeed = 236.588; // 8 oz per child per day (1 oz = 29.5735 ml, 8 oz = 236.588 ml)
     const adultDailyNeed = 3000; // average: 3L per adult per day
     const dogDailyNeed = 1500;    // ~1.5L per 50lb dog per day
     const catDailyNeed = 250;     // ~0.25L per 10lb cat per day
     const animalShelterDailyNeed = 50000; // ~50L per animal shelter per day
     
-    if (difference > 0 && averageUsage > 0) {
+    if (difference > 0) {
       // positive - saved water (below average)
       const excess = Math.abs(difference);
       const children = Math.floor(excess / childDailyNeed);
@@ -1316,39 +1618,39 @@
       // prioritize most impactful messages with diverse variations
       const positiveMessages = {
         children3plus: [
-          `🎉 You saved a day's worth of water for ${children} children today! Your AI usage choices are helping those in need.`,
-          `🎉 ${children} children could drink clean water thanks to your mindful AI usage today!`,
-          `🎉 Your sustainable choices provided a day's water for ${children} children in need!`
+          `You saved a day's worth of water for ${children} children today! Your AI usage choices are helping those in need.`,
+          `${children} children could drink clean water thanks to your mindful AI usage today!`,
+          `Your sustainable choices provided a day's water for ${children} children in need!`
         ],
         children: [
-          `💧 You saved a day's worth of water for ${children} ${children === 1 ? 'child' : 'children'} today! Every drop counts.`,
-          `💧 ${children} ${children === 1 ? 'child' : 'children'} could have clean drinking water from your savings today!`,
-          `💧 Your reduced AI usage means ${children} ${children === 1 ? 'child' : 'children'} can stay hydrated today!`
+          `You saved a day's worth of water for ${children} ${children === 1 ? 'child' : 'children'} today! Every drop counts.`,
+          `${children} ${children === 1 ? 'child' : 'children'} could have clean drinking water from your savings today!`,
+          `Your reduced AI usage means ${children} ${children === 1 ? 'child' : 'children'} can stay hydrated today!`
         ],
         shelters: [
-          `🐾 You saved enough water for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} today! Your mindful AI usage helps animals in need.`,
-          `🐾 ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} could care for their animals with the water you saved!`,
-          `🐾 Your water savings could support ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} today!`
+          `You saved enough water for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} today! Your mindful AI usage helps animals in need.`,
+          `${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} could care for their animals with the water you saved!`,
+          `Your water savings could support ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} today!`
         ],
         adults: [
-          `👥 You saved enough water for ${adults} ${adults === 1 ? 'adult' : 'adults'} today!`,
-          `👥 ${adults} ${adults === 1 ? 'person' : 'people'} could stay hydrated thanks to your mindful AI usage!`,
-          `👥 Your sustainable choices provided daily water for ${adults} ${adults === 1 ? 'adult' : 'adults'} today!`
+          `You saved enough water for ${adults} ${adults === 1 ? 'adult' : 'adults'} today!`,
+          `${adults} ${adults === 1 ? 'person' : 'people'} could stay hydrated thanks to your mindful AI usage!`,
+          `Your sustainable choices provided daily water for ${adults} ${adults === 1 ? 'adult' : 'adults'} today!`
         ],
         dogs: [
-          `🐕 You saved enough water for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} today!`,
-          `🐕 ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} could stay healthy with the water you saved today!`,
-          `🐕 Your water savings could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day!`
+          `You saved enough water for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} today!`,
+          `${dogs} ${dogs === 1 ? 'dog' : 'dogs'} could stay healthy with the water you saved today!`,
+          `Your water savings could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day!`
         ],
         cats: [
-          `🐱 You saved enough water for ${cats} ${cats === 1 ? 'cat' : 'cats'} today!`,
-          `🐱 ${cats} ${cats === 1 ? 'cat' : 'cats'} could thrive on the water you conserved today!`,
-          `🐱 Your mindful AI usage saved enough water for ${cats} ${cats === 1 ? 'cat' : 'cats'}!`
+          `You saved enough water for ${cats} ${cats === 1 ? 'cat' : 'cats'} today!`,
+          `${cats} ${cats === 1 ? 'cat' : 'cats'} could thrive on the water you conserved today!`,
+          `Your mindful AI usage saved enough water for ${cats} ${cats === 1 ? 'cat' : 'cats'}!`
         ],
         default: [
-          `💧 Great job staying below your average! Every small reduction helps those in need.`,
-          `💧 Your mindful AI usage is making a difference! Keep it up!`,
-          `💧 Every drop you save helps someone in need. Great work!`
+          `Great job staying below your average! Every small reduction helps those in need.`,
+          `Your mindful AI usage is making a difference! Keep it up!`,
+          `Every drop you save helps someone in need. Great work!`
         ]
       };
       
@@ -1384,34 +1686,34 @@
       // warnings with diverse variations
       const negativeMessages = {
         children3plus: [
-          `⚠️ That's enough water for ${children} children. Consider reducing your AI queries to help those in need.`,
-          `⚠️ Your excess usage could hydrate ${children} children. Your AI queries have a real humanitarian cost.`,
-          `⚠️ ${children} children could drink clean water with what you're using above average. Be more mindful.`
+          `That's enough water for ${children} children. Consider reducing your AI queries to help those in need.`,
+          `Your excess usage could hydrate ${children} children. Your AI queries have a real humanitarian cost.`,
+          `${children} children could drink clean water with what you're using above average. Be more mindful.`
         ],
         children: [
-          `⚠️ That's enough water for ${children} ${children === 1 ? 'child' : 'children'}. Consider reducing your AI queries.`,
-          `⚠️ Your extra usage equals a day's water for ${children} ${children === 1 ? 'child' : 'children'}. Think about reducing AI queries.`,
-          `⚠️ ${children} ${children === 1 ? 'child' : 'children'} could stay hydrated with your excess water usage.`
+          `That's enough water for ${children} ${children === 1 ? 'child' : 'children'}. Consider reducing your AI queries.`,
+          `Your extra usage equals a day's water for ${children} ${children === 1 ? 'child' : 'children'}. Think about reducing AI queries.`,
+          `${children} ${children === 1 ? 'child' : 'children'} could stay hydrated with your excess water usage.`
         ],
         shelters: [
-          `⚠️ That's enough for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'}. Be mindful of your AI usage.`,
-          `⚠️ Your excess usage could support ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'}. Consider the impact.`,
-          `⚠️ ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} could use the water you're consuming above average.`
+          `That's enough for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'}. Be mindful of your AI usage.`,
+          `Your excess usage could support ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'}. Consider the impact.`,
+          `${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} could use the water you're consuming above average.`
         ],
         adults: [
-          `⚠️ That's enough water for ${adults} ${adults === 1 ? 'adult' : 'adults'}. Consider reducing your AI queries.`,
-          `⚠️ Your excess usage equals daily water for ${adults} ${adults === 1 ? 'person' : 'people'}. Be more conscious.`,
-          `⚠️ ${adults} ${adults === 1 ? 'adult' : 'adults'} could stay hydrated with your extra water consumption.`
+          `That's enough water for ${adults} ${adults === 1 ? 'adult' : 'adults'}. Consider reducing your AI queries.`,
+          `Your excess usage equals daily water for ${adults} ${adults === 1 ? 'person' : 'people'}. Be more conscious.`,
+          `${adults} ${adults === 1 ? 'adult' : 'adults'} could stay hydrated with your extra water consumption.`
         ],
         dogs: [
-          `⚠️ That's enough for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'}. Be mindful of your AI usage.`,
-          `⚠️ Your excess usage could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day. Consider reducing queries.`,
-          `⚠️ ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} could thrive on the water you're using above average.`
+          `That's enough for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'}. Be mindful of your AI usage.`,
+          `Your excess usage could hydrate ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} for a day. Consider reducing queries.`,
+          `${dogs} ${dogs === 1 ? 'dog' : 'dogs'} could thrive on the water you're using above average.`
         ],
         default: [
-          `⚠️ You're using more than your average. Consider reducing your AI queries to help conserve water.`,
-          `⚠️ Your excess usage has a real cost. Be mindful of your AI queries and their impact.`,
-          `⚠️ Consider reducing your AI usage - every drop saved helps someone in need.`
+          `You're using more than your average. Consider reducing your AI queries to help conserve water.`,
+          `Your excess usage has a real cost. Be mindful of your AI queries and their impact.`,
+          `Consider reducing your AI usage - every drop saved helps someone in need.`
         ]
       };
       
@@ -1433,7 +1735,11 @@
       
       messageElement.textContent = message;
     } else {
-      messageElement.textContent = `💧 Query tracked! Total: ${formatWaterUsage(dailyUsage)}`;
+      // get unit from storage for accurate formatting
+      const unitData = await chrome.storage.local.get(['waterUnit']);
+      const unitToUse = unitData.waterUnit || currentUnit || 'ml';
+      const formatted = await formatWaterUsage(dailyUsage, unitToUse);
+      messageElement.textContent = `Query tracked! Total: ${formatted}`;
     }
     
     const bottleContainer = document.querySelector('.water-bottle-container');
@@ -1442,26 +1748,21 @@
       messageElement.style.left = '20px';
     }
     
-    document.body.appendChild(messageElement);
+    // ensure body exists and append message
+    if (document.body) {
+      document.body.appendChild(messageElement);
+      console.log('💧 Waterer: Message displayed', messageElement.textContent.substring(0, 50) + '...');
+    } else {
+      console.warn('💧 Waterer: document.body not available, cannot show message');
+    }
     
-    // remove after 5 seconds
+    // remove after 10 seconds
     setTimeout(() => {
       if (messageElement) {
         messageElement.remove();
         messageElement = null;
       }
-    }, 5000);
-  }
-  
-  // format water usage with up to 4 decimal places (removes trailing zeros)
-  function formatWaterUsage(ml) {
-    if (ml < 1000) {
-      return `${parseFloat(ml.toFixed(4))} ml`;
-    } else if (ml < 1000000) {
-      return `${parseFloat((ml / 1000).toFixed(4))} L`;
-    } else {
-      return `${parseFloat((ml / 1000000).toFixed(4))} m³`;
-    }
+    }, 10000); // increased to 10 seconds
   }
   
   // save positions
@@ -1530,7 +1831,26 @@
   // listen for messages (for future enhancements)
   try {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      // message handling can be added here if needed
+      if (message.type === 'resetData') {
+        // set resetting flag to prevent periodic updates
+        chrome.storage.local.set({ isResetting: true }, async () => {
+          // clear all storage
+          await chrome.storage.local.clear();
+          
+          // reset UI immediately
+          resetUIToZero();
+          
+          // set surveyCompleted to false and clear resetting flag
+          chrome.storage.local.set({
+            surveyCompleted: false,
+            isResetting: false
+          });
+        });
+        
+        sendResponse({ success: true });
+        return true;
+      }
+      // other message handling can be added here if needed
       return false;
     });
   } catch (error) {
@@ -1607,13 +1927,45 @@
   // also log that script loaded
   console.log('💧 Waterer: Content script loaded on', window.location.hostname);
   
+  // centralized function to reset UI to zero
+  function resetUIToZero() {
+    if (squareElement) {
+      squareElement.style.display = 'none';
+      const countEl = squareElement.querySelector('.query-count');
+      const usageEl = squareElement.querySelector('.water-usage');
+      if (countEl) {
+        countEl.innerHTML = '0 <span class="suffix">queries</span>';
+      }
+      if (usageEl) {
+        usageEl.innerHTML = '0.0000 <span class="suffix">ml</span>';
+        const mlValue = usageEl.querySelector('.ml-value');
+        if (mlValue) mlValue.remove();
+      }
+    }
+    if (bottleElement) {
+      const container = document.querySelector('.water-bottle-container');
+      if (container) container.style.display = 'none';
+      const waterFill = bottleElement.querySelector('.water-fill');
+      if (waterFill) waterFill.style.height = '0%';
+    }
+    queryCount = 0;
+    totalWaterUsage = 0;
+  }
+  
   // update display periodically and ensure UI elements exist
   setInterval(async () => {
     try {
-      const data = await chrome.storage.local.get(['dailyUsage', 'queries', 'surveyCompleted']);
+      const data = await chrome.storage.local.get(['dailyUsage', 'queries', 'surveyCompleted', 'isResetting']);
+      
+      // stop updates during reset
+      if (data.isResetting) {
+        return;
+      }
       
       // only show UI if survey is completed
       if (!data.surveyCompleted) {
+        // survey not completed - ensure UI is hidden and values are reset
+        resetUIToZero();
         return;
       }
       
@@ -1626,6 +1978,14 @@
       const bottleContainer = document.querySelector('.water-bottle-container');
       if (!bottleContainer || !bottleElement) {
         createWaterBottle();
+      }
+      
+      // ensure square is visible if survey is completed
+      if (squareElement) {
+        squareElement.style.display = '';
+      }
+      if (bottleContainer) {
+        bottleContainer.style.display = '';
       }
       
       queryCount = data.queries?.length || 0;
