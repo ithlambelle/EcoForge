@@ -147,10 +147,38 @@ document.addEventListener('DOMContentLoaded', async () => {
   const resetBtn = document.getElementById('reset-data-btn');
   if (resetBtn) {
     resetBtn.addEventListener('click', async () => {
-      if (confirm('Are you sure you want to reset all your data?')) {
+      if (confirm('Are you sure you want to reset all your data? This will clear all your usage statistics and you will need to complete the survey again.')) {
+        // clear all storage
         await chrome.storage.local.clear();
+        
+        // reset survey form
+        surveyForm.reset();
+        document.getElementById('usage-frequency').value = '';
+        document.getElementById('water-awareness').value = '';
+        document.getElementById('usage-purpose').value = '';
+        document.getElementById('screen-time').value = '';
+        
+        // hide survey water display if it exists
+        const surveyWaterDisplay = document.getElementById('survey-water-display');
+        if (surveyWaterDisplay) {
+          surveyWaterDisplay.remove();
+        }
+        
+        // show survey, hide dashboard
         surveyContainer.style.display = 'block';
-        dashboardContainer.style.display = 'none';
+        dashboardContainer.classList.remove('show');
+        
+        // notify content script to update/hide UI
+        try {
+          const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tabs[0]) {
+            chrome.tabs.sendMessage(tabs[0].id, { type: 'resetData' }).catch(() => {
+              // content script might not be loaded, that's okay
+            });
+          }
+        } catch (error) {
+          // ignore errors
+        }
       }
     });
   }

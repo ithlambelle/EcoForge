@@ -102,15 +102,32 @@
       }
     });
     
-    // listen for unit changes from popup
+    // listen for storage changes (unit changes and data resets)
     chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName === 'local' && changes.waterUnit) {
-        const newUnit = changes.waterUnit.newValue;
-        if (['ml', 'gallons', 'ounces'].includes(newUnit)) {
-          currentUnit = newUnit;
-          updateUnitToggleButton();
-          updateSquareDisplay();
-          updateBottleDisplay();
+      if (areaName === 'local') {
+        // handle unit changes
+        if (changes.waterUnit) {
+          const newUnit = changes.waterUnit.newValue;
+          if (['ml', 'gallons', 'ounces'].includes(newUnit)) {
+            currentUnit = newUnit;
+            updateUnitToggleButton();
+            updateSquareDisplay();
+            updateBottleDisplay();
+          }
+        }
+        
+        // handle data reset (surveyCompleted removed)
+        if (changes.surveyCompleted && !changes.surveyCompleted.newValue) {
+          // data was reset, hide UI elements
+          if (squareElement) {
+            squareElement.style.display = 'none';
+          }
+          if (bottleElement) {
+            const container = document.querySelector('.water-bottle-container');
+            if (container) {
+              container.style.display = 'none';
+            }
+          }
         }
       }
     });
