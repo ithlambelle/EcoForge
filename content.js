@@ -323,7 +323,6 @@
       // update currentUnit from storage if available
       if (data.waterUnit && ['ml', 'gallons', 'ounces'].includes(data.waterUnit)) {
         currentUnit = data.waterUnit;
-        updateUnitToggleButton();
       }
     
     const countEl = squareElement.querySelector('.query-count');
@@ -444,11 +443,9 @@
     // save preference
     chrome.storage.local.set({ waterUnit: currentUnit }).catch(() => {});
     
-    updateUnitToggleButton();
     updateSquareDisplay();
   }
   
-  // update unit toggle button text
   // helper function to format water usage with up to 4 decimal places (removes trailing zeros)
   function formatWaterUsage(ml, unit = null) {
     const targetUnit = unit || currentUnit;
