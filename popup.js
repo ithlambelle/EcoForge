@@ -146,6 +146,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // function to check state and update UI accordingly
   async function checkStateAndUpdateUI() {
+    // Don't run if survey was just completed (prevent race condition)
+    if (window.dropQuerySurveyJustCompleted) {
+      console.log('💧 DropQuery: Skipping state check - survey just completed');
+      return;
+    }
+    
     const surveyData = await chrome.storage.local.get(['surveyCompleted', 'userData', 'dailyUsage', 'isResetting']);
     
     console.log('💧 DropQuery: State check', {
@@ -264,23 +270,40 @@ document.addEventListener('DOMContentLoaded', async () => {
       // don't block survey completion if Supabase fails
     }
     
-    // switch to dashboard view BEFORE any async operations that might delay
-    console.log('💧 DropQuery: Switching to dashboard view');
-    showDashboard();
+    // CRITICAL: Switch to dashboard IMMEDIATELY and update UI
+    // Don't wait for anything - do this synchronously
+    console.log('💧 DropQuery: Switching to dashboard view IMMEDIATELY');
     
-    // update dashboard
+    // Hide survey and show dashboard immediately (synchronous DOM manipulation)
+    surveyContainer.style.display = 'none';
+    dashboardContainer.classList.add('show');
+    dashboardContainer.style.display = 'block';
+    
+    console.log('💧 DropQuery: Dashboard visible, survey hidden');
+    
+    // Update dashboard content
     await updateDashboard();
     
-    // final verification
+    // Verify state was saved and restore if needed
     const finalVerify = await chrome.storage.local.get(['surveyCompleted']);
-    console.log('💧 DropQuery: Final verification after dashboard shown', {
+    console.log('💧 DropQuery: Final verification', {
       surveyCompleted: finalVerify.surveyCompleted
     });
     
     if (!finalVerify.surveyCompleted) {
       console.error('💧 DropQuery: CRITICAL - surveyCompleted was cleared! Restoring...');
       await chrome.storage.local.set({ surveyCompleted: true });
+      // Force UI update again
+      surveyContainer.style.display = 'none';
+      dashboardContainer.classList.add('show');
+      dashboardContainer.style.display = 'block';
     }
+    
+    // Set a flag to prevent initial state check from interfering
+    window.dropQuerySurveyJustCompleted = true;
+    setTimeout(() => {
+      window.dropQuerySurveyJustCompleted = false;
+    }, 1000);
   });
   
   // handle notification frequency change
