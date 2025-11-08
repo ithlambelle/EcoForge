@@ -1708,7 +1708,24 @@
   // listen for messages (for future enhancements)
   try {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      // message handling can be added here if needed
+      if (message.type === 'resetData') {
+        // hide UI elements when data is reset
+        if (squareElement) {
+          squareElement.style.display = 'none';
+        }
+        if (bottleElement) {
+          const container = document.querySelector('.water-bottle-container');
+          if (container) {
+            container.style.display = 'none';
+          }
+        }
+        // reset local variables
+        queryCount = 0;
+        totalWaterUsage = 0;
+        sendResponse({ success: true });
+        return true;
+      }
+      // other message handling can be added here if needed
       return false;
     });
   } catch (error) {
