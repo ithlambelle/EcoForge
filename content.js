@@ -1984,6 +1984,28 @@
       
       // only show UI if survey is completed
       if (!data.surveyCompleted) {
+        // survey not completed - ensure UI is hidden and values are reset
+        if (squareElement) {
+          squareElement.style.display = 'none';
+          const countEl = squareElement.querySelector('.query-count');
+          const usageEl = squareElement.querySelector('.water-usage');
+          if (countEl) {
+            countEl.innerHTML = '0 <span class="suffix">queries</span>';
+          }
+          if (usageEl) {
+            usageEl.innerHTML = '0.0000 <span class="suffix">ml</span>';
+            const mlValue = usageEl.querySelector('.ml-value');
+            if (mlValue) mlValue.remove();
+          }
+        }
+        if (bottleElement) {
+          const container = document.querySelector('.water-bottle-container');
+          if (container) container.style.display = 'none';
+          const waterFill = bottleElement.querySelector('.water-fill');
+          if (waterFill) waterFill.style.height = '0%';
+        }
+        queryCount = 0;
+        totalWaterUsage = 0;
         return;
       }
       
@@ -1996,6 +2018,14 @@
       const bottleContainer = document.querySelector('.water-bottle-container');
       if (!bottleContainer || !bottleElement) {
         createWaterBottle();
+      }
+      
+      // ensure square is visible if survey is completed
+      if (squareElement) {
+        squareElement.style.display = '';
+      }
+      if (bottleContainer) {
+        bottleContainer.style.display = '';
       }
       
       queryCount = data.queries?.length || 0;
