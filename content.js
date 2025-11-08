@@ -1476,9 +1476,10 @@
       
       console.log('💧 Waterer: Updated storage', { dailyUsage, queryCount, totalWaterUsage, queriesCount: queries.length });
       
-      // verify it was saved
+      // verify it was saved (format to avoid floating point precision issues)
       const verify = await chrome.storage.local.get(['dailyUsage']);
-      console.log('💧 Waterer: Verification - saved dailyUsage:', verify.dailyUsage);
+      const formattedDailyUsage = verify.dailyUsage ? parseFloat(verify.dailyUsage.toFixed(4)) : 0;
+      console.log('💧 Waterer: Verification - saved dailyUsage:', formattedDailyUsage);
     } catch (error) {
       console.error('💧 Waterer: Error saving to storage', error);
       return;
