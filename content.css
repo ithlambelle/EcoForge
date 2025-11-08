@@ -78,8 +78,8 @@
   left: 4px;
   min-width: 30px;
   height: 18px;
-  background: rgba(255, 255, 255, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 4px;
   color: white;
   font-size: 9px;
@@ -88,13 +88,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
+  opacity: 0.7;
   transition: opacity 0.3s, background 0.3s;
   padding: 0 4px;
+  z-index: 10;
 }
 
 .waterer-square:hover .unit-toggle-btn {
   opacity: 1;
+  background: rgba(255, 255, 255, 0.4);
 }
 
 .waterer-square .unit-toggle-btn:hover {
