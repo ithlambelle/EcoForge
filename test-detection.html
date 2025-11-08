@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Waterer Detection Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+    .test-section {
+      border: 1px solid #ddd;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 8px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 100px;
+      padding: 10px;
+      font-size: 14px;
+      border: 2px solid #2196f3;
+      border-radius: 4px;
+    }
+    button {
+      background: #2196f3;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 10px 5px;
+    }
+    button:hover {
+      background: #1976d2;
+    }
+    #results {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 4px;
+      margin-top: 20px;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+    .log {
+      margin: 5px 0;
+      padding: 5px;
+      border-left: 3px solid #2196f3;
+      padding-left: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>💧 Waterer Detection Test</h1>
+  <p>This page simulates ChatGPT's interface to test the extension's detection.</p>
+  
+  <div class="test-section">
+    <h2>Test 1: Enter Key Detection</h2>
+    <p>Type a message and press Enter (without Shift):</p>
+    <textarea id="test-textarea" placeholder="Type your message here..."></textarea>
+    <div id="results-1" class="results"></div>
+  </div>
+  
+  <div class="test-section">
+    <h2>Test 2: Button Click Detection</h2>
+    <p>Type a message and click Send:</p>
+    <textarea id="test-textarea-2" placeholder="Type your message here..."></textarea>
+    <button id="send-btn" aria-label="Send message">Send</button>
+    <div id="results-2" class="results"></div>
+  </div>
+  
+  <div class="test-section">
+    <h2>Test 3: Form Submission</h2>
+    <form id="test-form">
+      <textarea name="message" placeholder="Type your message here..."></textarea>
+      <button type="submit">Submit</button>
+    </form>
+    <div id="results-3" class="results"></div>
+  </div>
+  
+  <div class="test-section">
+    <h2>Console Logs</h2>
+    <div id="results"></div>
+  </div>
+  
+  <script>
+    // simulate extension detection
+    const logs = [];
+    
+    function log(message, data = null) {
+      const timestamp = new Date().toLocaleTimeString();
+      const logEntry = `[${timestamp}] ${message}${data ? '\n' + JSON.stringify(data, null, 2) : ''}`;
+      logs.push(logEntry);
+      
+      const resultsDiv = document.getElementById('results');
+      const logDiv = document.createElement('div');
+      logDiv.className = 'log';
+      logDiv.textContent = logEntry;
+      resultsDiv.appendChild(logDiv);
+      resultsDiv.scrollTop = resultsDiv.scrollHeight;
+      
+      console.log('💧 Waterer Test:', message, data);
+    }
+    
+    // test 1: enter key
+    const textarea1 = document.getElementById('test-textarea');
+    textarea1.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        const text = textarea1.value.trim();
+        if (text.length > 0) {
+          log('Enter key pressed', { textLength: text.length, text: text.substring(0, 50) });
+          document.getElementById('results-1').innerHTML = `<p>✅ Enter key detected! Text length: ${text.length}</p>`;
+        }
+      }
+    });
+    
+    // test 2: button click
+    const textarea2 = document.getElementById('test-textarea-2');
+    const sendBtn = document.getElementById('send-btn');
+    sendBtn.addEventListener('click', () => {
+      const text = textarea2.value.trim();
+      if (text.length > 0) {
+        log('Send button clicked', { textLength: text.length, text: text.substring(0, 50) });
+        document.getElementById('results-2').innerHTML = `<p>✅ Button click detected! Text length: ${text.length}</p>`;
+      }
+    });
+    
+    // test 3: form submission
+    const form = document.getElementById('test-form');
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = form.querySelector('textarea').value.trim();
+      if (text.length > 0) {
+        log('Form submitted', { textLength: text.length, text: text.substring(0, 50) });
+        document.getElementById('results-3').innerHTML = `<p>✅ Form submission detected! Text length: ${text.length}</p>`;
+      }
+    });
+    
+    log('Test page loaded. The extension should detect these interactions if it\'s working correctly.');
+    log('Check the browser console (F12) for extension logs.');
+  </script>
+</body>
+</html>
+

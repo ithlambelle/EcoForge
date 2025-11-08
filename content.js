@@ -14,12 +14,18 @@
   // initialize extension
   async function init() {
     try {
+      console.log('💧 Waterer: init() called');
       const data = await chrome.storage.local.get(['surveyCompleted', 'userData', 'dailyUsage']);
+      console.log('💧 Waterer: Storage data', { surveyCompleted: data.surveyCompleted, dailyUsage: data.dailyUsage });
       
       if (!data.surveyCompleted) {
-        return; // don't show UI until survey is completed
+        console.log('💧 Waterer: Survey not completed, starting tracking anyway but not showing UI');
+        // start tracking even without survey - we'll track but not show UI
+        startTracking();
+        return;
       }
       
+      console.log('💧 Waterer: Survey completed, creating UI and starting tracking');
       // create UI elements
       createSquare();
       createWaterBottle();
@@ -188,18 +194,31 @@
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
     
-    // save positions
-    savePositions();
+    // save positions (with error handling)
+    try {
+      savePositions();
+    } catch (error) {
+      // extension context might be invalidated - ignore
+      if (!error.message?.includes('Extension context invalidated')) {
+        console.warn('Waterer: Error in onMouseUp', error);
+      }
+    }
   }
   
   // update square display
   async function updateSquareDisplay() {
     if (!squareElement) return;
     
-    // get latest data from storage to ensure accuracy
-    const data = await chrome.storage.local.get(['dailyUsage', 'queries']);
-    const currentCount = data.queries?.length || queryCount;
-    const currentUsage = data.dailyUsage || totalWaterUsage;
+    try {
+      // check if extension context is still valid
+      if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+        return; // extension context invalidated
+      }
+      
+      // get latest data from storage to ensure accuracy
+      const data = await chrome.storage.local.get(['dailyUsage', 'queries']);
+      const currentCount = data.queries?.length || queryCount;
+      const currentUsage = data.dailyUsage || totalWaterUsage;
     
     const countEl = squareElement.querySelector('.query-count');
     const usageEl = squareElement.querySelector('.water-usage');
@@ -216,76 +235,99 @@
       usageEl.textContent = formatWaterUsage(currentUsage);
     }
     
-    // update local variables
-    queryCount = currentCount;
-    totalWaterUsage = currentUsage;
+      // update local variables
+      queryCount = currentCount;
+      totalWaterUsage = currentUsage;
+    } catch (error) {
+      // extension context invalidated - ignore silently
+      if (!error.message?.includes('Extension context invalidated')) {
+        console.warn('Waterer: Error updating square display', error);
+      }
+    }
   }
   
   // update bottle display
   async function updateBottleDisplay() {
-    if (!bottleElement) {
-      // try to recreate if missing
-      const container = document.querySelector('.water-bottle-container');
-      if (!container) {
-        createWaterBottle();
-        // wait a bit for it to be created
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } else {
-        bottleElement = container.querySelector('.water-bottle');
+    try {
+      // check if extension context is still valid
+      if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+        return; // extension context invalidated
       }
-    }
-    
-    if (!bottleElement) return;
-    
-    const data = await chrome.storage.local.get(['userData', 'dailyUsage']);
-    const dailyUsage = data.dailyUsage || 0;
-    const userData = data.userData || {};
-    const averageUsage = userData.averageUsage || 500;
-    
-    console.log('💧 Waterer: Updating bottle', { dailyUsage, averageUsage });
-    
-    // determine bottle size (500ml or gallon)
-    const useGallon = averageUsage >= 3785.412;
-    const bottleCapacity = useGallon ? 3785.412 : 500;
-    
-    if (useGallon && !bottleElement.classList.contains('gallon')) {
-      bottleElement.classList.add('gallon');
-      const label = bottleElement.querySelector('.bottle-label');
-      if (label) label.textContent = '1 Gallon';
-    } else if (!useGallon && bottleElement.classList.contains('gallon')) {
-      bottleElement.classList.remove('gallon');
-      const label = bottleElement.querySelector('.bottle-label');
-      if (label) label.textContent = '500ml';
-    }
-    
-    // calculate fill percentage - start at 0, fill based on current usage
-    // use modulo to show remainder after full bottles, but ensure it starts at 0
-    const fillPercentage = dailyUsage === 0 ? 0 : Math.min((dailyUsage % bottleCapacity) / bottleCapacity * 100, 100);
-    const waterFill = bottleElement.querySelector('.water-fill');
-    
-    if (waterFill) {
-      const oldHeight = parseFloat(waterFill.style.height) || 0;
-      waterFill.style.height = `${fillPercentage}%`;
       
-      console.log('💧 Waterer: Bottle fill updated', { fillPercentage, dailyUsage, bottleCapacity });
+      if (!bottleElement) {
+        // try to recreate if missing
+        const container = document.querySelector('.water-bottle-container');
+        if (!container) {
+          createWaterBottle();
+          // wait a bit for it to be created
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } else {
+          bottleElement = container.querySelector('.water-bottle');
+        }
+      }
       
-      // add wave animation if there's actual usage and it changed
-      if (dailyUsage > 0 && Math.abs(fillPercentage - oldHeight) > 1) {
-        waterFill.classList.add('wave');
-        setTimeout(() => waterFill.classList.remove('wave'), 2000);
+      if (!bottleElement) return;
+      
+      const data = await chrome.storage.local.get(['userData', 'dailyUsage']);
+      const dailyUsage = data.dailyUsage || 0;
+      const userData = data.userData || {};
+      const averageUsage = userData.averageUsage || 500;
+      
+      console.log('💧 Waterer: Updating bottle', { dailyUsage, averageUsage });
+      
+      // determine bottle size (500ml or gallon)
+      const useGallon = averageUsage >= 3785.412;
+      const bottleCapacity = useGallon ? 3785.412 : 500;
+      
+      if (useGallon && !bottleElement.classList.contains('gallon')) {
+        bottleElement.classList.add('gallon');
+        const label = bottleElement.querySelector('.bottle-label');
+        if (label) label.textContent = '1 Gallon';
+      } else if (!useGallon && bottleElement.classList.contains('gallon')) {
+        bottleElement.classList.remove('gallon');
+        const label = bottleElement.querySelector('.bottle-label');
+        if (label) label.textContent = '500ml';
+      }
+      
+      // calculate fill percentage - start at 0, fill based on current usage
+      // use modulo to show remainder after full bottles, but ensure it starts at 0
+      const fillPercentage = dailyUsage === 0 ? 0 : Math.min((dailyUsage % bottleCapacity) / bottleCapacity * 100, 100);
+      const waterFill = bottleElement.querySelector('.water-fill');
+      
+      if (waterFill) {
+        const oldHeight = parseFloat(waterFill.style.height) || 0;
+        waterFill.style.height = `${fillPercentage}%`;
+        
+        console.log('💧 Waterer: Bottle fill updated', { fillPercentage, dailyUsage, bottleCapacity });
+        
+        // add wave animation if there's actual usage and it changed
+        if (dailyUsage > 0 && Math.abs(fillPercentage - oldHeight) > 1) {
+          waterFill.classList.add('wave');
+          setTimeout(() => waterFill.classList.remove('wave'), 2000);
+        }
+      }
+    } catch (error) {
+      // extension context invalidated - ignore silently
+      if (!error.message?.includes('Extension context invalidated')) {
+        console.warn('Waterer: Error updating bottle display', error);
       }
     }
   }
   
   // start tracking AI queries
   function startTracking() {
+    console.log('💧 Waterer: startTracking() called on', window.location.hostname);
+    
     // monitor network requests for AI services
     const originalFetch = window.fetch;
     window.fetch = async function(...args) {
       const response = await originalFetch.apply(this, args);
       // check both request URL and response
       if (args[0]) {
-        checkForAIQuery(args[0], response);
+        const url = args[0]?.toString() || '';
+        if (checkForAIQuery(url, response)) {
+          console.log('💧 Waterer: Detected AI query in fetch', url);
+        }
       }
       return response;
     };
@@ -304,7 +346,9 @@
       const xhr = this;
       this.addEventListener('load', () => {
         if (xhr._method === 'POST' && xhr._url) {
-          checkForAIQuery(xhr._url, xhr);
+          if (checkForAIQuery(xhr._url, xhr)) {
+            console.log('💧 Waterer: Detected AI query in XHR', xhr._url);
+          }
         }
       });
       return originalXHRSend.apply(this, args);
@@ -317,112 +361,223 @@
     observeChatInterface();
     
     // also set up direct ChatGPT detection
-    if (window.location.hostname.includes('chatgpt.com') || window.location.hostname.includes('openai.com')) {
+    const hostname = window.location.hostname;
+    console.log('💧 Waterer: Checking hostname for ChatGPT detection:', hostname);
+    if (hostname.includes('chatgpt.com') || hostname.includes('openai.com')) {
+      console.log('💧 Waterer: ChatGPT domain detected, setting up detection');
       setupChatGPTDetection();
+    } else {
+      console.log('💧 Waterer: Not a ChatGPT domain, using generic detection');
     }
   }
   
   // specific ChatGPT detection
   function setupChatGPTDetection() {
-    // watch for textarea changes and Enter key
-    const observer = new MutationObserver(() => {
-      const textarea = document.querySelector('textarea[data-id="root"]') || 
-                       document.querySelector('textarea[placeholder*="Message"]') ||
-                       document.querySelector('textarea');
+    console.log('💧 Waterer: Setting up ChatGPT detection');
+    
+    let trackedTextareas = new Set();
+    let trackedButtons = new Set();
+    let textareaCount = 0;
+    let buttonCount = 0;
+    
+    function attachTracking(textarea) {
+      if (!textarea || trackedTextareas.has(textarea)) return;
       
-      if (textarea && !textarea.hasAttribute('data-waterer-tracked')) {
-        textarea.setAttribute('data-waterer-tracked', 'true');
+      trackedTextareas.add(textarea);
+      textareaCount++;
+      console.log('💧 Waterer: Attached tracking to textarea #' + textareaCount, {
+        id: textarea.id,
+        className: textarea.className,
+        placeholder: textarea.placeholder,
+        value: textarea.value?.substring(0, 20)
+      });
+      
+      // track on Enter key - use capture phase to catch it before ChatGPT
+      textarea.addEventListener('keydown', (e) => {
+        console.log('💧 Waterer: Keydown event detected', { key: e.key, shiftKey: e.shiftKey, value: textarea.value?.substring(0, 30) });
+        if (e.key === 'Enter' && !e.shiftKey) {
+          // capture text immediately before it might be cleared
+          const text = textarea.value?.trim() || '';
+          console.log('💧 Waterer: Enter key pressed (no shift), text length:', text.length, 'text:', text.substring(0, 50));
+          if (text.length > 0) {
+            // track immediately, don't wait
+            try {
+              if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+                const waterUsage = estimateQuerySizeFromText(text);
+                console.log('💧 Waterer: Calling trackQuery immediately', { model: 'chatgpt', waterUsage, textLength: text.length });
+                trackQuery('chatgpt', waterUsage);
+              } else {
+                console.warn('💧 Waterer: Chrome runtime not available');
+              }
+            } catch (error) {
+              console.error('💧 Waterer: Error in trackQuery call', error);
+              if (!error.message?.includes('Extension context invalidated')) {
+                console.warn('Waterer: Error tracking query', error);
+              }
+            }
+          } else {
+            console.log('💧 Waterer: Enter pressed but textarea is empty');
+          }
+        }
+      }, true); // use capture phase
+      
+      // also listen to input events to capture text as user types
+      let lastInputValue = '';
+      textarea.addEventListener('input', (e) => {
+        lastInputValue = textarea.value || '';
+      });
+      
+      // backup: track on beforeinput to catch before value changes
+      textarea.addEventListener('beforeinput', (e) => {
+        if (e.inputType === 'insertLineBreak' || (e.data === null && e.inputType === 'insertText')) {
+          const text = textarea.value?.trim() || '';
+          if (text.length > 0) {
+            console.log('💧 Waterer: beforeinput detected, text length:', text.length);
+          }
+        }
+      });
+      
+      // also watch for form submission
+      const form = textarea.closest('form');
+      if (form && !form.hasAttribute('data-waterer-tracked')) {
+        form.setAttribute('data-waterer-tracked', 'true');
+        form.addEventListener('submit', (e) => {
+          const text = textarea.value?.trim() || textarea.textContent?.trim() || '';
+          console.log('💧 Waterer: Form submitted, text length:', text.length, 'text:', text.substring(0, 50));
+          if (text.length > 0) {
+            try {
+              if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+                console.log('💧 Waterer: Calling trackQuery from form submit', { model: 'chatgpt', textLength: text.length });
+                trackQuery('chatgpt', estimateQuerySizeFromText(text));
+              }
+            } catch (error) {
+              console.error('💧 Waterer: Error in trackQuery call from form', error);
+              if (!error.message?.includes('Extension context invalidated')) {
+                console.warn('Waterer: Error tracking query', error);
+              }
+            }
+          }
+        }, true); // use capture phase
+      }
+      
+      // find and track send button
+      const findSendButton = () => {
+        const buttons = [
+          textarea.closest('form')?.querySelector('button[type="submit"]'),
+          textarea.parentElement?.querySelector('button'),
+          textarea.parentElement?.parentElement?.querySelector('button'),
+          document.querySelector('button[aria-label*="Send" i]'),
+          document.querySelector('button[data-testid*="send" i]'),
+          document.querySelector('button[title*="Send" i]')
+        ].filter(Boolean);
         
-          // track on Enter key
-          textarea.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              const text = textarea.value.trim();
-              if (text.length > 0) {
-                setTimeout(() => {
+          for (const btn of buttons) {
+            if (!trackedButtons.has(btn)) {
+              trackedButtons.add(btn);
+              buttonCount++;
+              console.log('💧 Waterer: Attached tracking to button #' + buttonCount, {
+                ariaLabel: btn.getAttribute('aria-label'),
+                dataTestId: btn.getAttribute('data-testid'),
+                className: btn.className
+              });
+              btn.addEventListener('click', (e) => {
+                console.log('💧 Waterer: Button click detected', { buttonId: btn.id, ariaLabel: btn.getAttribute('aria-label') });
+                // try multiple ways to get the text
+                const text = textarea.value?.trim() || textarea.textContent?.trim() || '';
+                console.log('💧 Waterer: Send button clicked, text length:', text.length, 'text:', text.substring(0, 50));
+                if (text.length > 0) {
+                  // track immediately
                   try {
-                    // check if extension context is still valid
                     if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
-                      trackQuery('chatgpt', estimateQuerySizeFromText(text));
+                      const waterUsage = estimateQuerySizeFromText(text);
+                      console.log('💧 Waterer: Calling trackQuery from button immediately', { model: 'chatgpt', waterUsage, textLength: text.length });
+                      trackQuery('chatgpt', waterUsage);
                     }
                   } catch (error) {
-                    // extension context invalidated - ignore silently
+                    console.error('💧 Waterer: Error in trackQuery call from button', error);
                     if (!error.message?.includes('Extension context invalidated')) {
                       console.warn('Waterer: Error tracking query', error);
                     }
                   }
-                }, 300);
-              }
-            }
-          });
-        
-        // also watch for send button clicks
-        const sendButton = textarea.closest('form')?.querySelector('button[type="submit"]') ||
-                          textarea.parentElement?.querySelector('button') ||
-                          document.querySelector('button[aria-label*="Send" i]');
-        
-        if (sendButton && !sendButton.hasAttribute('data-waterer-tracked')) {
-          sendButton.setAttribute('data-waterer-tracked', 'true');
-          sendButton.addEventListener('click', () => {
-            const text = textarea.value.trim();
-            if (text.length > 0) {
-              setTimeout(() => {
-                try {
-                  // check if extension context is still valid
-                  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
-                    trackQuery('chatgpt', estimateQuerySizeFromText(text));
-                  }
-                } catch (error) {
-                  // extension context invalidated - ignore silently
-                  if (!error.message?.includes('Extension context invalidated')) {
-                    console.warn('Waterer: Error tracking query', error);
+                } else {
+                  console.log('💧 Waterer: Button clicked but textarea is empty, trying to find text in DOM...');
+                  // try to find the text in the DOM
+                  const form = textarea.closest('form');
+                  if (form) {
+                    const allInputs = form.querySelectorAll('input, textarea');
+                    for (const input of allInputs) {
+                      const val = input.value?.trim() || input.textContent?.trim() || '';
+                      if (val.length > 0) {
+                        console.log('💧 Waterer: Found text in another input:', val.substring(0, 50));
+                        trackQuery('chatgpt', estimateQuerySizeFromText(val));
+                        break;
+                      }
+                    }
                   }
                 }
-              }, 300);
-            }
-          });
+              }, true); // use capture phase
+          }
         }
-      }
+      };
+      
+      findSendButton();
+      
+      // also watch for button creation
+      const buttonObserver = new MutationObserver(() => {
+        findSendButton();
+      });
+      buttonObserver.observe(textarea.closest('form') || document.body, { childList: true, subtree: true });
+    }
+    
+    // watch for textarea changes
+    const observer = new MutationObserver(() => {
+      const textareas = document.querySelectorAll('textarea');
+      textareas.forEach(attachTracking);
     });
     
     observer.observe(document.body, { childList: true, subtree: true });
     
-    // also check immediately
-    setTimeout(() => {
+    // check immediately and periodically
+    const checkAndAttach = () => {
       try {
-        // check if extension context is still valid
         if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) {
-          return; // extension context invalidated
+          console.warn('💧 Waterer: Chrome runtime not available in checkAndAttach');
+          return;
         }
         
-        const textarea = document.querySelector('textarea');
-        if (textarea && !textarea.hasAttribute('data-waterer-tracked')) {
-          textarea.setAttribute('data-waterer-tracked', 'true');
-          textarea.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              const text = textarea.value.trim();
-              if (text.length > 0) {
-                setTimeout(() => {
-                  try {
-                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
-                      trackQuery('chatgpt', estimateQuerySizeFromText(text));
-                    }
-                  } catch (error) {
-                    if (!error.message?.includes('Extension context invalidated')) {
-                      console.warn('Waterer: Error tracking query', error);
-                    }
-                  }
-                }, 300);
-              }
-            }
+        const textareas = document.querySelectorAll('textarea');
+        console.log('💧 Waterer: Found', textareas.length, 'textareas on page');
+        textareas.forEach((ta, index) => {
+          console.log('💧 Waterer: Textarea', index, {
+            id: ta.id,
+            className: ta.className,
+            placeholder: ta.placeholder,
+            visible: ta.offsetParent !== null
           });
-        }
+          attachTracking(ta);
+        });
+        
+        // also try to find send buttons
+        const sendButtons = document.querySelectorAll('button[aria-label*="Send" i], button[data-testid*="send" i], button[title*="Send" i]');
+        console.log('💧 Waterer: Found', sendButtons.length, 'send buttons on page');
       } catch (error) {
-        // extension context invalidated - ignore silently
+        console.error('💧 Waterer: Error in checkAndAttach', error);
         if (!error.message?.includes('Extension context invalidated')) {
-          console.warn('Waterer: Error in setupChatGPTDetection', error);
+          console.warn('Waterer: Error in checkAndAttach', error);
         }
       }
-    }, 1000);
+    };
+    
+    // run immediately and multiple times
+    console.log('💧 Waterer: Starting periodic textarea detection');
+    checkAndAttach();
+    setTimeout(checkAndAttach, 500);
+    setTimeout(checkAndAttach, 2000);
+    setTimeout(checkAndAttach, 5000);
+    setTimeout(checkAndAttach, 10000);
+    
+    // also check periodically
+    setInterval(checkAndAttach, 10000);
   }
   
   // comprehensive list of AI service domains
@@ -772,10 +927,17 @@
     }
     trackQuery.lastTrackTime = trackTime;
     
-    console.log('💧 Waterer: Tracking query', { model, waterUsage });
+    console.log('💧 Waterer: Tracking query', { model, waterUsage, timestamp: new Date().toISOString() });
     
     // save to storage first
-    const data = await chrome.storage.local.get(['dailyUsage', 'weeklyUsage', 'totalUsage', 'queries', 'userData']);
+    let data;
+    try {
+      data = await chrome.storage.local.get(['dailyUsage', 'weeklyUsage', 'totalUsage', 'queries', 'userData']);
+      console.log('💧 Waterer: Current storage data', data);
+    } catch (error) {
+      console.error('💧 Waterer: Error reading storage', error);
+      return;
+    }
     
     const now = new Date();
     const today = now.toISOString().split('T')[0];
@@ -811,14 +973,23 @@
     totalWaterUsage = dailyUsage;
     
     // save to storage
-    await chrome.storage.local.set({
-      dailyUsage,
-      weeklyUsage: queries.reduce((sum, q) => sum + q.waterUsage, 0),
-      totalUsage,
-      queries
-    });
-    
-    console.log('💧 Waterer: Updated storage', { dailyUsage, queryCount, totalWaterUsage });
+    try {
+      await chrome.storage.local.set({
+        dailyUsage,
+        weeklyUsage: queries.reduce((sum, q) => sum + q.waterUsage, 0),
+        totalUsage,
+        queries
+      });
+      
+      console.log('💧 Waterer: Updated storage', { dailyUsage, queryCount, totalWaterUsage, queriesCount: queries.length });
+      
+      // verify it was saved
+      const verify = await chrome.storage.local.get(['dailyUsage']);
+      console.log('💧 Waterer: Verification - saved dailyUsage:', verify.dailyUsage);
+    } catch (error) {
+      console.error('💧 Waterer: Error saving to storage', error);
+      return;
+    }
     
     // update UI after storage is saved
     updateSquareDisplay();
@@ -908,38 +1079,64 @@
   
   // save positions
   function savePositions() {
-    const positions = {};
-    
-    if (squareElement) {
-      const rect = squareElement.getBoundingClientRect();
-      positions.square = { x: rect.left, y: rect.top };
+    try {
+      // check if extension context is still valid
+      if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+        return; // extension context invalidated
+      }
+      
+      const positions = {};
+      
+      if (squareElement) {
+        const rect = squareElement.getBoundingClientRect();
+        positions.square = { x: rect.left, y: rect.top };
+      }
+      
+      const bottleContainer = document.querySelector('.water-bottle-container');
+      if (bottleContainer) {
+        const rect = bottleContainer.getBoundingClientRect();
+        positions.bottle = { x: rect.left, y: rect.top };
+      }
+      
+      chrome.storage.local.set({ uiPositions: positions }).catch(() => {
+        // ignore errors if extension context is invalid
+      });
+    } catch (error) {
+      // extension context invalidated - ignore silently
+      if (!error.message?.includes('Extension context invalidated')) {
+        console.warn('Waterer: Error saving positions', error);
+      }
     }
-    
-    const bottleContainer = document.querySelector('.water-bottle-container');
-    if (bottleContainer) {
-      const rect = bottleContainer.getBoundingClientRect();
-      positions.bottle = { x: rect.left, y: rect.top };
-    }
-    
-    chrome.storage.local.set({ uiPositions: positions });
   }
   
   // load positions
   async function loadPositions() {
-    const data = await chrome.storage.local.get(['uiPositions']);
-    const positions = data.uiPositions || {};
-    
-    if (squareElement && positions.square) {
-      squareElement.style.left = `${positions.square.x}px`;
-      squareElement.style.top = `${positions.square.y}px`;
-      squareElement.style.right = 'auto';
-    }
-    
-    const bottleContainer = document.querySelector('.water-bottle-container');
-    if (bottleContainer && positions.bottle) {
-      bottleContainer.style.left = `${positions.bottle.x}px`;
-      bottleContainer.style.top = `${positions.bottle.y}px`;
-      bottleContainer.style.bottom = 'auto';
+    try {
+      // check if extension context is still valid
+      if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+        return; // extension context invalidated
+      }
+      
+      const data = await chrome.storage.local.get(['uiPositions']);
+      const positions = data.uiPositions || {};
+      
+      if (squareElement && positions.square) {
+        squareElement.style.left = `${positions.square.x}px`;
+        squareElement.style.top = `${positions.square.y}px`;
+        squareElement.style.right = 'auto';
+      }
+      
+      const bottleContainer = document.querySelector('.water-bottle-container');
+      if (bottleContainer && positions.bottle) {
+        bottleContainer.style.left = `${positions.bottle.x}px`;
+        bottleContainer.style.top = `${positions.bottle.y}px`;
+        bottleContainer.style.bottom = 'auto';
+      }
+    } catch (error) {
+      // extension context invalidated - ignore silently
+      if (!error.message?.includes('Extension context invalidated')) {
+        console.warn('Waterer: Error loading positions', error);
+      }
     }
   }
   
@@ -956,12 +1153,60 @@
     }
   }
   
+  // expose manual test function for debugging
+  window.watererTest = function() {
+    console.log('💧 Waterer: Manual test triggered');
+    trackQuery('chatgpt', 50);
+  };
+  
+  // also expose a function to check current state
+  window.watererStatus = async function() {
+    const data = await chrome.storage.local.get(['dailyUsage', 'queries', 'userData']);
+    console.log('💧 Waterer Status:', {
+      dailyUsage: data.dailyUsage,
+      queriesCount: data.queries?.length || 0,
+      queries: data.queries,
+      averageUsage: data.userData?.averageUsage
+    });
+    return data;
+  };
+  
+  // expose function to manually trigger detection setup
+  window.watererSetupDetection = function() {
+    console.log('💧 Waterer: Manually triggering detection setup');
+    if (window.location.hostname.includes('chatgpt.com') || window.location.hostname.includes('openai.com')) {
+      setupChatGPTDetection();
+    } else {
+      observeChatInterface();
+    }
+  };
+  
+  // expose function to find and log all textareas
+  window.watererFindTextareas = function() {
+    const textareas = document.querySelectorAll('textarea');
+    console.log('💧 Waterer: Found', textareas.length, 'textareas:');
+    textareas.forEach((ta, i) => {
+      console.log(`  Textarea ${i}:`, {
+        id: ta.id,
+        className: ta.className,
+        placeholder: ta.placeholder,
+        value: ta.value?.substring(0, 50),
+        visible: ta.offsetParent !== null,
+        element: ta
+      });
+    });
+    return Array.from(textareas);
+  };
+  
   // initialize when DOM is ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
     init();
   }
+  
+  // also log that script loaded
+  console.log('💧 Waterer: Content script loaded on', window.location.hostname);
   
   // update display periodically and ensure UI elements exist
   setInterval(async () => {
