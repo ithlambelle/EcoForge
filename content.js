@@ -1410,10 +1410,23 @@
     let weeklyUsage = data.weeklyUsage || 0;
     let totalUsage = data.totalUsage || 0;
     let queries = data.queries || [];
+    let userData = data.userData || {};
+    let dailyHistory = userData.dailyHistory || [];
     
     // check if it's a new day
     const lastQuery = queries[queries.length - 1];
     if (lastQuery && lastQuery.date !== today) {
+      // save yesterday's usage to history before resetting
+      if (dailyUsage > 0) {
+        dailyHistory.push({
+          date: lastQuery.date,
+          usage: dailyUsage
+        });
+        // keep only last 30 days of history
+        if (dailyHistory.length > 30) {
+          dailyHistory = dailyHistory.slice(-30);
+        }
+      }
       dailyUsage = 0; // reset daily usage
     }
     

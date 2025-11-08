@@ -107,16 +107,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const currentData = await chrome.storage.local.get(['dailyUsage']);
     const surveyWaterUsage = currentData.dailyUsage || 0;
     
-    // calculate estimated average usage based on survey
-    const estimatedAverage = calculateAverageUsage(surveyAnswers);
-    
+    // start average at 0 - will be calculated dynamically based on actual usage
+    // this allows for more meaningful feedback as users build up their usage history
     const userData = {
       surveyAnswers,
-      averageUsage: estimatedAverage,
+      averageUsage: 0, // start at 0, calculate from actual usage over time
       dailyUsage: surveyWaterUsage, // preserve survey water usage
       weeklyUsage: surveyWaterUsage,
       totalUsage: surveyWaterUsage,
       queries: [],
+      dailyHistory: [], // track daily usage for rolling average
       createdAt: new Date().toISOString()
     };
     
@@ -333,7 +333,12 @@ function updateComparisonMessage(dailyUsage, averageUsage) {
   const comparisonText = document.getElementById('comparison-text');
   
   if (!averageUsage || averageUsage === 0) {
-    comparisonText.textContent = 'Track your first query to see your impact!';
+    if (dailyUsage === 0) {
+      comparisonText.textContent = 'Track your first query to see your impact!';
+    } else {
+      // user has usage but no average yet - building up their baseline
+      comparisonText.textContent = 'Building your usage baseline... Keep tracking to see how you compare!';
+    }
     comparisonCard.className = 'comparison-card';
     return;
   }
