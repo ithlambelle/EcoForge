@@ -84,7 +84,6 @@
     squareElement.innerHTML = `
       <div class="query-count">0 <span class="suffix">queries</span></div>
       <div class="water-usage">0.0000 <span class="suffix">ml</span></div>
-      <button class="unit-toggle-btn" title="Toggle unit (ml/gallons/ounces)">ml</button>
       <button class="close-btn" title="Remove">×</button>
     `;
     
@@ -103,7 +102,6 @@
     chrome.storage.local.get(['waterUnit'], (result) => {
       if (result.waterUnit && ['ml', 'gallons', 'ounces'].includes(result.waterUnit)) {
         currentUnit = result.waterUnit;
-        updateUnitToggleButton();
         updateSquareDisplay();
         updateBottleDisplay();
       }
@@ -117,7 +115,6 @@
           const newUnit = changes.waterUnit.newValue;
           if (['ml', 'gallons', 'ounces'].includes(newUnit)) {
             currentUnit = newUnit;
-            updateUnitToggleButton();
             updateSquareDisplay();
             updateBottleDisplay();
           }
@@ -175,12 +172,6 @@
           }
         }
       }
-    });
-    
-    // unit toggle button
-    squareElement.querySelector('.unit-toggle-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleUnit();
     });
     
     // close button - hide instead of remove
@@ -458,14 +449,6 @@
   }
   
   // update unit toggle button text
-  function updateUnitToggleButton() {
-    if (!squareElement) return;
-    const toggleBtn = squareElement.querySelector('.unit-toggle-btn');
-    if (toggleBtn) {
-      toggleBtn.textContent = getUnitLabel(currentUnit);
-    }
-  }
-  
   // helper function to format water usage with up to 4 decimal places (removes trailing zeros)
   function formatWaterUsage(ml, unit = null) {
     const targetUnit = unit || currentUnit;
