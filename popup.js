@@ -110,21 +110,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
     }
-      // update dashboard when usage data changes
-      if (changes.dailyUsage || changes.weeklyUsage || changes.totalUsage || changes.userData) {
+    
+    // update dashboard when usage data changes
+    if (changes.dailyUsage || changes.weeklyUsage || changes.totalUsage || changes.userData) {
+      if (dashboardContainer.classList.contains('show')) {
+        updateDashboard();
+      }
+    }
+    
+    // update unit if changed
+    if (changes.waterUnit) {
+      const newUnit = changes.waterUnit.newValue;
+      if (['ml', 'gallons', 'ounces'].includes(newUnit)) {
+        currentUnit = newUnit;
+        updateUnitToggleButton();
         if (dashboardContainer.classList.contains('show')) {
           updateDashboard();
-        }
-      }
-      // update unit if changed
-      if (changes.waterUnit) {
-        const newUnit = changes.waterUnit.newValue;
-        if (['ml', 'gallons', 'ounces'].includes(newUnit)) {
-          currentUnit = newUnit;
-          updateUnitToggleButton();
-          if (dashboardContainer.classList.contains('show')) {
-            updateDashboard();
-          }
         }
       }
     }
