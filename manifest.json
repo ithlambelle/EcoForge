@@ -43,7 +43,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["water-bottle.html", "water-square.html"],
+      "resources": ["water-bottle.html", "water-square.html", "fetch-hook.js"],
       "matches": ["<all_urls>"]
     }
   ]
