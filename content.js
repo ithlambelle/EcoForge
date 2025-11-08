@@ -10,6 +10,7 @@
   let totalWaterUsage = 0;
   let isDragging = false;
   let dragOffset = { x: 0, y: 0 };
+  let currentUnit = 'ml'; // 'ml', 'gallons', 'ounces'
   
   // dedupe/throttle to prevent overcounting
   let lastHit = 0;
@@ -76,6 +77,7 @@
     squareElement.innerHTML = `
       <div class="query-count">0 <span class="suffix">queries</span></div>
       <div class="water-usage">0.0000 <span class="suffix">ml</span></div>
+      <button class="unit-toggle-btn" title="Toggle unit (ml/gallons/ounces)">ml</button>
       <button class="close-btn" title="Remove">×</button>
     `;
     
@@ -255,12 +257,14 @@
       }, 300);
     }
     if (usageEl) {
-      // format water usage and add ml suffix
-      // calculate bottles based on 5ml capacity (1 bottle = 5ml)
-      const bottles = Math.floor(currentUsage / 5);
-      const formatted = formatWaterUsage(currentUsage);
-      // extract just the number part (before the unit)
-      const numberPart = formatted.split(' ')[0];
+      // format water usage based on selected unit
+      const formatted = formatWaterUsage(currentUsage, currentUnit);
+      const parts = formatted.split(' ');
+      const numberPart = parts[0];
+      const unitLabel = parts[1] || getUnitLabel(currentUnit);
+      
+      // calculate bottles based on 5ml capacity (only show if unit is ml)
+      const bottles = currentUnit === 'ml' ? Math.floor(currentUsage / 5) : 0;
       
       // create or get suffix element
       let suffix = usageEl.querySelector('.suffix');
@@ -269,8 +273,8 @@
         suffix.className = 'suffix';
       }
       
-      // show bottles if >= 1 bottle, otherwise show ml
-      if (bottles >= 1) {
+      // show bottles if >= 1 bottle and unit is ml, otherwise show converted value
+      if (bottles >= 1 && currentUnit === 'ml') {
         const bottleText = bottles === 1 ? 'bottle' : 'bottles';
         // format: "2 bottles" on main line, "10.823 ml" as smaller suffix
         usageEl.innerHTML = `${bottles} <span class="suffix">${bottleText}</span>`;
@@ -282,11 +286,15 @@
           mlValue.style.cssText = 'font-size: 8px; opacity: 0.7; margin-top: 2px;';
           usageEl.appendChild(mlValue);
         }
-        mlValue.textContent = `${numberPart} ml`;
+        mlValue.textContent = `${numberPart} ${unitLabel}`;
       } else {
-        suffix.textContent = ' ml';
-        usageEl.innerHTML = `${numberPart} `;
+        // show converted value directly
+        suffix.textContent = ` ${unitLabel}`;
+        usageEl.innerHTML = `${numberPart}`;
         usageEl.appendChild(suffix);
+        // remove ml-value if it exists
+        const mlValue = usageEl.querySelector('.ml-value');
+        if (mlValue) mlValue.remove();
       }
     }
     
@@ -301,14 +309,77 @@
     }
   }
   
+  // conversion constants (accurate US fluid measurements)
+  const ML_TO_GALLON = 3785.41;  // 1 US gallon = 3785.41 ml
+  const ML_TO_OUNCE = 29.5735;   // 1 US fluid ounce = 29.5735 ml
+  
+  // convert ml to selected unit
+  function convertToUnit(ml, unit) {
+    switch(unit) {
+      case 'gallons':
+        return ml / ML_TO_GALLON;
+      case 'ounces':
+        return ml / ML_TO_OUNCE;
+      case 'ml':
+      default:
+        return ml;
+    }
+  }
+  
+  // get unit label
+  function getUnitLabel(unit) {
+    switch(unit) {
+      case 'gallons':
+        return 'gal';
+      case 'ounces':
+        return 'oz';
+      case 'ml':
+      default:
+        return 'ml';
+    }
+  }
+  
+  // toggle between units: ml -> gallons -> ounces -> ml
+  function toggleUnit() {
+    const units = ['ml', 'gallons', 'ounces'];
+    const currentIndex = units.indexOf(currentUnit);
+    currentUnit = units[(currentIndex + 1) % units.length];
+    
+    // save preference
+    chrome.storage.local.set({ waterUnit: currentUnit }).catch(() => {});
+    
+    updateUnitToggleButton();
+    updateSquareDisplay();
+  }
+  
+  // update unit toggle button text
+  function updateUnitToggleButton() {
+    if (!squareElement) return;
+    const toggleBtn = squareElement.querySelector('.unit-toggle-btn');
+    if (toggleBtn) {
+      toggleBtn.textContent = getUnitLabel(currentUnit);
+    }
+  }
+  
   // helper function to format water usage with up to 4 decimal places (removes trailing zeros)
-  function formatWaterUsage(ml) {
-    if (ml < 1000) {
-      return `${parseFloat(ml.toFixed(4))} ml`;
-    } else if (ml < 1000000) {
-      return `${parseFloat((ml / 1000).toFixed(4))} L`;
+  function formatWaterUsage(ml, unit = null) {
+    const targetUnit = unit || currentUnit;
+    const converted = convertToUnit(ml, targetUnit);
+    const unitLabel = getUnitLabel(targetUnit);
+    
+    // format based on magnitude
+    if (targetUnit === 'ml') {
+      if (ml < 1000) {
+        return `${parseFloat(ml.toFixed(4))} ${unitLabel}`;
+      } else if (ml < 1000000) {
+        return `${parseFloat((ml / 1000).toFixed(4))} L`;
+      } else {
+        return `${parseFloat((ml / 1000000).toFixed(4))} m³`;
+      }
     } else {
-      return `${parseFloat((ml / 1000000).toFixed(4))} m³`;
+      // for gallons and ounces, show with appropriate decimal places
+      const decimals = converted < 1 ? 4 : (converted < 10 ? 3 : 2);
+      return `${parseFloat(converted.toFixed(decimals))} ${unitLabel}`;
     }
   }
   

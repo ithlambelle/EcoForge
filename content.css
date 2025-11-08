@@ -72,6 +72,36 @@
   font-weight: 400;
 }
 
+.waterer-square .unit-toggle-btn {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  min-width: 30px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 4px;
+  color: white;
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s, background 0.3s;
+  padding: 0 4px;
+}
+
+.waterer-square:hover .unit-toggle-btn {
+  opacity: 1;
+}
+
+.waterer-square .unit-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
 .waterer-square .close-btn {
   position: absolute;
   top: 4px;
