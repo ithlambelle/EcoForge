@@ -161,6 +161,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   surveyForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     
+    console.log('💧 DropQuery: Survey form submitted');
+    
+    // disable form to prevent double submission
+    surveyForm.style.pointerEvents = 'none';
+    const submitBtn = surveyForm.querySelector('button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Starting...';
+    }
+    
     const surveyAnswers = {
       usageFrequency: document.getElementById('usage-frequency').value,
       waterAwareness: document.getElementById('water-awareness').value,
@@ -169,8 +179,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     
     // get current survey water usage
-    const currentData = await chrome.storage.local.get(['dailyUsage']);
+    const currentData = await chrome.storage.local.get(['dailyUsage', 'isResetting']);
     const surveyWaterUsage = currentData.dailyUsage || 0;
+    
+    console.log('💧 DropQuery: Current state before save', {
+      dailyUsage: surveyWaterUsage,
+      isResetting: currentData.isResetting
+    });
     
     // start average at 0 - will be calculated dynamically based on actual usage
     // this allows for more meaningful feedback as users build up their usage history
@@ -186,34 +201,62 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     
     // ensure isResetting flag is cleared when completing survey
+    // save all data in one atomic operation
     await chrome.storage.local.set({
       surveyCompleted: true,
       userData: userData,
       dailyUsage: surveyWaterUsage,
       weeklyUsage: surveyWaterUsage,
       totalUsage: surveyWaterUsage,
-      isResetting: false // clear reset flag if it was set
+      isResetting: false, // clear reset flag if it was set
+      queries: [] // ensure queries array exists
     });
     
-    console.log('💧 Waterer: Survey completed, surveyCompleted set to true');
+    console.log('💧 DropQuery: Storage saved with surveyCompleted: true');
     
-    // send to supabase
+    // verify immediately
+    const verify1 = await chrome.storage.local.get(['surveyCompleted', 'isResetting']);
+    console.log('💧 DropQuery: First verification', {
+      surveyCompleted: verify1.surveyCompleted,
+      isResetting: verify1.isResetting
+    });
+    
+    if (!verify1.surveyCompleted) {
+      console.error('💧 DropQuery: ERROR - surveyCompleted not saved! Retrying...');
+      // retry once
+      await chrome.storage.local.set({
+        surveyCompleted: true,
+        isResetting: false
+      });
+      const verify2 = await chrome.storage.local.get(['surveyCompleted']);
+      console.log('💧 DropQuery: Retry verification', { surveyCompleted: verify2.surveyCompleted });
+    }
+    
+    // send to supabase (non-blocking)
     try {
       await saveUserDataToSupabase(userData);
     } catch (error) {
-      console.warn('💧 Waterer: Error saving to Supabase', error);
+      console.warn('💧 DropQuery: Error saving to Supabase', error);
       // don't block survey completion if Supabase fails
     }
     
-    // verify the state was saved
-    const verify = await chrome.storage.local.get(['surveyCompleted']);
-    console.log('💧 Waterer: Verified surveyCompleted after save:', verify.surveyCompleted);
-    
-    // switch to dashboard view
+    // switch to dashboard view BEFORE any async operations that might delay
+    console.log('💧 DropQuery: Switching to dashboard view');
     showDashboard();
+    
+    // update dashboard
     await updateDashboard();
     
-    console.log('💧 Waterer: Dashboard shown');
+    // final verification
+    const finalVerify = await chrome.storage.local.get(['surveyCompleted']);
+    console.log('💧 DropQuery: Final verification after dashboard shown', {
+      surveyCompleted: finalVerify.surveyCompleted
+    });
+    
+    if (!finalVerify.surveyCompleted) {
+      console.error('💧 DropQuery: CRITICAL - surveyCompleted was cleared! Restoring...');
+      await chrome.storage.local.set({ surveyCompleted: true });
+    }
   });
   
   // handle notification frequency change
