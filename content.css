@@ -1,4 +1,4 @@
-/* content.css - styles for injected UI elements */
+/* content.css - styles for injected UI elements - Frutiger Aero aesthetic */
 
 .waterer-container {
   position: fixed;
@@ -10,23 +10,45 @@
 .waterer-square {
   width: 80px;
   height: 80px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(0, 188, 212, 0.25) 0%, rgba(0, 150, 136, 0.3) 50%, rgba(33, 150, 243, 0.25) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: white;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  color: #004d40;
+  box-shadow: 0 8px 32px rgba(0, 188, 212, 0.2), 
+              0 2px 8px rgba(0, 0, 0, 0.1),
+              inset 0 1px 0 rgba(255, 255, 255, 0.5);
   cursor: move;
-  transition: transform 0.3s, box-shadow 0.3s;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              box-shadow 0.3s,
+              background 0.3s;
   position: relative;
   overflow: hidden;
 }
 
+.waterer-square::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 .waterer-square:hover {
   transform: translateY(-5px) scale(1.05);
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+  box-shadow: 0 12px 40px rgba(0, 188, 212, 0.3), 
+              0 4px 12px rgba(0, 0, 0, 0.15),
+              inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  background: linear-gradient(135deg, rgba(0, 188, 212, 0.35) 0%, rgba(0, 150, 136, 0.4) 50%, rgba(33, 150, 243, 0.35) 100%);
 }
 
 .waterer-square:active {
@@ -40,6 +62,9 @@
   display: flex;
   align-items: baseline;
   gap: 2px;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
+  position: relative;
+  z-index: 1;
 }
 
 .waterer-square .query-count .suffix {
@@ -50,13 +75,16 @@
 
 .waterer-square .water-usage {
   font-size: 11px;
-  opacity: 0.9;
+  opacity: 0.95;
   margin-top: 4px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0;
   line-height: 1.2;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
+  position: relative;
+  z-index: 1;
 }
 
 .waterer-square .water-usage .suffix {
@@ -78,30 +106,34 @@
   left: 4px;
   min-width: 30px;
   height: 18px;
-  background: rgba(255, 255, 255, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 4px;
-  color: white;
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 6px;
+  color: #004d40;
   font-size: 9px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.7;
-  transition: opacity 0.3s, background 0.3s;
+  opacity: 0.8;
+  transition: opacity 0.3s, background 0.3s, transform 0.2s;
   padding: 0 4px;
   z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .waterer-square:hover .unit-toggle-btn {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .waterer-square .unit-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.4);
-  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.8);
+  transform: scale(1.05);
 }
 
 .waterer-square .close-btn {
@@ -110,17 +142,21 @@
   right: 4px;
   width: 20px;
   height: 20px;
-  background: rgba(255, 255, 255, 0.3);
-  border: none;
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: 50%;
-  color: white;
+  color: #004d40;
   font-size: 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transition: opacity 0.3s;
+  transition: opacity 0.3s, background 0.3s, transform 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 10;
 }
 
 .waterer-square:hover .close-btn {
@@ -128,7 +164,8 @@
 }
 
 .waterer-square .close-btn:hover {
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.6);
+  transform: scale(1.1);
 }
 
 .water-bottle-container {
@@ -142,14 +179,31 @@
 .water-bottle {
   width: 60px;
   height: 120px;
-  background: #e3f2fd;
-  border: 3px solid #2196f3;
-  border-radius: 8px 8px 4px 4px;
+  background: linear-gradient(135deg, rgba(224, 247, 250, 0.6) 0%, rgba(178, 235, 242, 0.5) 100%);
+  backdrop-filter: blur(15px) saturate(180%);
+  -webkit-backdrop-filter: blur(15px) saturate(180%);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 12px 12px 6px 6px;
   position: relative;
   overflow: hidden;
   cursor: move;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  transition: transform 0.3s;
+  box-shadow: 0 8px 32px rgba(0, 188, 212, 0.25),
+              0 2px 8px rgba(0, 0, 0, 0.1),
+              inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s;
+}
+
+.water-bottle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30%;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.4), transparent);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .water-bottle.gallon {
@@ -159,6 +213,9 @@
 
 .water-bottle:hover {
   transform: scale(1.05);
+  box-shadow: 0 12px 40px rgba(0, 188, 212, 0.35),
+              0 4px 12px rgba(0, 0, 0, 0.15),
+              inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .water-bottle .water-fill {
@@ -166,9 +223,16 @@
   bottom: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(to top, #2196f3, #64b5f6);
+  background: linear-gradient(to top, 
+    rgba(0, 188, 212, 0.8) 0%, 
+    rgba(0, 150, 136, 0.7) 50%,
+    rgba(33, 150, 243, 0.8) 100%);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
   transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 0 0 4px 4px;
+  border-radius: 0 0 6px 6px;
+  box-shadow: inset 0 -2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 0;
 }
 
 .water-bottle .water-fill.wave {
@@ -191,9 +255,16 @@
   transform: translate(-50%, -50%);
   font-size: 10px;
   font-weight: 600;
-  color: #1976d2;
-  z-index: 1;
+  color: #004d40;
+  z-index: 2;
   text-align: center;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
 .water-bottle .close-btn {
@@ -202,8 +273,10 @@
   right: -8px;
   width: 24px;
   height: 24px;
-  background: #2196f3;
-  border: 2px solid white;
+  background: rgba(0, 188, 212, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 2px solid rgba(255, 255, 255, 0.8);
   border-radius: 50%;
   color: white;
   font-size: 14px;
@@ -212,12 +285,14 @@
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transition: opacity 0.3s, background 0.3s;
+  transition: opacity 0.3s, background 0.3s, transform 0.2s;
   z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 188, 212, 0.3);
 }
 
 .water-bottle .close-btn:hover {
-  background: #1976d2;
+  background: rgba(0, 150, 136, 0.8);
+  transform: scale(1.1);
 }
 
 .water-bottle-container:hover .close-btn {
@@ -229,23 +304,31 @@
   bottom: 160px;
   left: 20px;
   z-index: 999997;
-  background: white;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(240, 255, 255, 0.85) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1.5px solid rgba(255, 255, 255, 0.5);
   padding: 12px 16px;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 188, 212, 0.2),
+              0 2px 8px rgba(0, 0, 0, 0.1),
+              inset 0 1px 0 rgba(255, 255, 255, 0.6);
   max-width: 300px;
   font-size: 14px;
   line-height: 1.4;
+  color: #004d40;
   animation: slideUp 0.3s ease-out, fadeOut 0.3s ease-in 9.7s;
   pointer-events: none;
 }
 
 .waterer-message.positive {
-  border-left: 4px solid #4caf50;
+  border-left: 4px solid rgba(0, 150, 136, 0.8);
+  background: linear-gradient(135deg, rgba(232, 245, 233, 0.9) 0%, rgba(200, 230, 201, 0.85) 100%);
 }
 
 .waterer-message.negative {
-  border-left: 4px solid #f44336;
+  border-left: 4px solid rgba(244, 67, 54, 0.8);
+  background: linear-gradient(135deg, rgba(255, 235, 238, 0.9) 0%, rgba(255, 205, 210, 0.85) 100%);
 }
 
 @keyframes slideUp {
