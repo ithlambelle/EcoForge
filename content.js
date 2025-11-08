@@ -1295,19 +1295,63 @@
     
     const difference = averageUsage - dailyUsage;
     
+    // accurate water needs (from research data)
+    const childDailyNeed = 2000; // ~2L per child per day
+    const adultDailyNeed = 3000; // average: 3L per adult per day
+    const dogDailyNeed = 1500;    // ~1.5L per 50lb dog per day
+    const catDailyNeed = 250;     // ~0.25L per 10lb cat per day
+    const animalShelterDailyNeed = 50000; // ~50L per animal shelter per day
+    
     if (difference > 0 && averageUsage > 0) {
+      // positive - saved water (below average)
+      const excess = Math.abs(difference);
+      const children = Math.floor(excess / childDailyNeed);
+      const adults = Math.floor(excess / adultDailyNeed);
+      const dogs = Math.floor(excess / dogDailyNeed);
+      const cats = Math.floor(excess / catDailyNeed);
+      const shelters = Math.floor(excess / animalShelterDailyNeed);
+      
       messageElement.classList.add('positive');
-      const children = Math.floor(difference / 2000);
-      if (children > 0) {
-        messageElement.textContent = `🎉 You saved a day's worth of water for ${children} ${children === 1 ? 'child' : 'children'} today!`;
+      
+      // prioritize most impactful messages
+      if (children >= 3) {
+        messageElement.textContent = `🎉 You saved a day's worth of water for ${children} children today! Your AI usage choices are helping those in need.`;
+      } else if (children > 0) {
+        messageElement.textContent = `💧 You saved a day's worth of water for ${children} ${children === 1 ? 'child' : 'children'} today! Every drop counts.`;
+      } else if (shelters > 0) {
+        messageElement.textContent = `🐾 You saved enough water for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'} today! Your mindful AI usage helps animals in need.`;
+      } else if (adults > 0) {
+        messageElement.textContent = `👥 You saved enough water for ${adults} ${adults === 1 ? 'adult' : 'adults'} today!`;
+      } else if (dogs > 0) {
+        messageElement.textContent = `🐕 You saved enough water for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'} today!`;
+      } else if (cats > 0) {
+        messageElement.textContent = `🐱 You saved enough water for ${cats} ${cats === 1 ? 'cat' : 'cats'} today!`;
       } else {
-        messageElement.textContent = `💧 Great job staying below your average!`;
+        messageElement.textContent = `💧 Great job staying below your average! Every small reduction helps those in need.`;
       }
     } else if (difference < 0 && averageUsage > 0) {
-      messageElement.classList.add('negative');
+      // negative - used more (above average)
       const excess = Math.abs(difference);
-      const children = Math.ceil(excess / 2000);
-      messageElement.textContent = `⚠️ You're using more than your average. That's enough for ${children} ${children === 1 ? 'child' : 'children'}.`;
+      const children = Math.ceil(excess / childDailyNeed);
+      const adults = Math.ceil(excess / adultDailyNeed);
+      const dogs = Math.ceil(excess / dogDailyNeed);
+      const shelters = Math.ceil(excess / animalShelterDailyNeed);
+      
+      messageElement.classList.add('negative');
+      
+      if (children >= 3) {
+        messageElement.textContent = `⚠️ That's enough water for ${children} children. Consider reducing your AI queries to help those in need.`;
+      } else if (children > 0) {
+        messageElement.textContent = `⚠️ That's enough water for ${children} ${children === 1 ? 'child' : 'children'}. Consider reducing your AI queries.`;
+      } else if (shelters > 0) {
+        messageElement.textContent = `⚠️ That's enough for ${shelters} ${shelters === 1 ? 'animal shelter' : 'animal shelters'}. Be mindful of your AI usage.`;
+      } else if (adults > 0) {
+        messageElement.textContent = `⚠️ That's enough water for ${adults} ${adults === 1 ? 'adult' : 'adults'}. Consider reducing your AI queries.`;
+      } else if (dogs > 0) {
+        messageElement.textContent = `⚠️ That's enough for ${dogs} ${dogs === 1 ? 'dog' : 'dogs'}. Be mindful of your AI usage.`;
+      } else {
+        messageElement.textContent = `⚠️ You're using more than your average. Consider reducing your AI queries to help conserve water.`;
+      }
     } else {
       messageElement.textContent = `💧 Query tracked! Total: ${formatWaterUsage(dailyUsage)}`;
     }
