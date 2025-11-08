@@ -298,12 +298,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     await chrome.storage.local.set(payload);
     console.log('💧 DropQuery: Storage saved atomically with surveyCompleted: true', { commitId: __lastCommitId });
     
-    // Switch UI immediately (no waiting for listeners)
+    // Switch UI immediately (no waiting for listeners) - FORCE IT
     console.log('💧 DropQuery: Switching to dashboard view IMMEDIATELY');
+    
+    // Aggressively hide survey
     surveyContainer.style.display = 'none';
+    surveyContainer.style.visibility = 'hidden';
+    surveyContainer.classList.remove('show');
+    
+    // Aggressively show dashboard
     dashboardContainer.classList.add('show');
     dashboardContainer.style.display = 'block';
-    console.log('💧 DropQuery: Dashboard visible, survey hidden');
+    dashboardContainer.style.visibility = 'visible';
+    
+    // Force layout recalculation to ensure changes take effect
+    const forceLayout = dashboardContainer.offsetHeight;
+    const forceLayout2 = surveyContainer.offsetHeight;
+    
+    console.log('💧 DropQuery: Dashboard visible, survey hidden', {
+      surveyDisplay: window.getComputedStyle(surveyContainer).display,
+      dashboardDisplay: window.getComputedStyle(dashboardContainer).display,
+      dashboardHasShow: dashboardContainer.classList.contains('show')
+    });
     
     // CRITICAL: Force a synchronous re-check to ensure UI stays
     const immediateVerify = await chrome.storage.local.get(['surveyCompleted', 'surveyCommitId']);
@@ -320,10 +336,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         surveyCommitId: __lastCommitId,
         isResetting: false
       });
-      // Force UI again
+      // Force UI again - aggressively
       surveyContainer.style.display = 'none';
+      surveyContainer.style.visibility = 'hidden';
+      surveyContainer.classList.remove('show');
       dashboardContainer.classList.add('show');
       dashboardContainer.style.display = 'block';
+      dashboardContainer.style.visibility = 'visible';
+      dashboardContainer.offsetHeight; // force layout
     }
     
     // Update dashboard content
