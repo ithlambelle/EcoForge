@@ -503,7 +503,7 @@ function updateComparisonMessage(dailyUsage, averageUsage) {
       default: [
         `You're using ${Math.abs(percentage)}% more than your average. Consider reducing your AI queries to help conserve water for those in need.`,
         `Your excess usage has a real cost. Be mindful of your AI queries and their impact.`,
-        `⚠️ Consider reducing your AI usage - every drop saved helps someone in need.`
+        `Consider reducing your AI usage - every drop saved helps someone in need.`
       ]
     };
     
