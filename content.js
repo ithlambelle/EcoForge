@@ -658,7 +658,7 @@
                 console.log('💧 Waterer: Calling trackQuery immediately', { model: 'chatgpt', waterUsage, textLength: text.length });
                 trackQuery('chatgpt', waterUsage);
               } else {
-                console.warn('💧 Waterer: Chrome runtime not available');
+                // chrome runtime not available - silently skip (expected when extension context invalidated)
               }
             } catch (error) {
               console.error('💧 Waterer: Error in trackQuery call', error);
@@ -791,8 +791,8 @@
     // check immediately and periodically
     const checkAndAttach = () => {
       try {
-        if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) {
-          console.warn('💧 Waterer: Chrome runtime not available in checkAndAttach');
+        // silently return if chrome context is invalid (expected when extension is reloaded)
+        if (!isChromeContextValid()) {
           return;
         }
         
