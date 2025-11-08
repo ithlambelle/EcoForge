@@ -39,6 +39,14 @@ body {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
+.dashboard-container {
+  display: none;
+}
+
+.dashboard-container.show {
+  display: block;
+}
+
 .question {
   margin-bottom: 20px;
 }

@@ -3,6 +3,9 @@
   "name": "Waterer - AI Water Usage Tracker",
   "version": "1.0.0",
   "description": "Track and visualize water usage from AI model queries with positive reinforcement",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'self'"
+  },
   "permissions": [
     "storage",
     "activeTab",
@@ -22,7 +25,7 @@
       "matches": ["<all_urls>"],
       "js": ["content.js"],
       "css": ["content.css"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ],
   "action": {

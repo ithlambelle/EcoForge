@@ -37,12 +37,30 @@
   font-size: 24px;
   font-weight: 700;
   line-height: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.waterer-square .query-count .suffix {
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.85;
 }
 
 .waterer-square .water-usage {
   font-size: 11px;
   opacity: 0.9;
   margin-top: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.waterer-square .water-usage .suffix {
+  font-size: 9px;
+  font-weight: 500;
+  opacity: 0.85;
 }
 
 .waterer-square .close-btn {
