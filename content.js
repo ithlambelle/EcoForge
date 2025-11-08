@@ -272,13 +272,22 @@
       // show bottles if >= 1 bottle, otherwise show ml
       if (bottles >= 1) {
         const bottleText = bottles === 1 ? 'bottle' : 'bottles';
-        suffix.textContent = ` ${bottleText} (${numberPart} ml)`;
+        // format: "2 bottles" on main line, "10.823 ml" as smaller suffix
+        usageEl.innerHTML = `${bottles} <span class="suffix">${bottleText}</span>`;
+        // add ml value as a separate smaller element below
+        let mlValue = usageEl.querySelector('.ml-value');
+        if (!mlValue) {
+          mlValue = document.createElement('div');
+          mlValue.className = 'ml-value';
+          mlValue.style.cssText = 'font-size: 8px; opacity: 0.7; margin-top: 2px;';
+          usageEl.appendChild(mlValue);
+        }
+        mlValue.textContent = `${numberPart} ml`;
       } else {
         suffix.textContent = ' ml';
+        usageEl.innerHTML = `${numberPart} `;
+        usageEl.appendChild(suffix);
       }
-      
-      usageEl.innerHTML = bottles >= 1 ? `${bottles} ` : `${numberPart} `;
-      usageEl.appendChild(suffix);
     }
     
       // update local variables
