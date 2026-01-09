@@ -4,13 +4,13 @@ A Chrome extension that tracks and visualizes water usage from AI model queries 
 
 ## Features
 
-- 💧 **Real-time Water Usage Tracking**: Monitors queries to ChatGPT, Gemini, and other AI models
-- 📊 **Personalized Dashboard**: Calculates your average usage based on an initial survey
-- 🎯 **Positive Reinforcement**: Shows how your water savings compare to children, animals, and communities in need
-- 🎨 **Interactive UI**: Draggable water bottle and usage square with smooth animations
-- 📈 **Usage Analytics**: Track daily, weekly, and total water usage
-- 🔔 **Smart Notifications**: Get notified about your usage patterns
-- ☁️ **Cloud Sync**: Data synced to Supabase for collective impact tracking
+-  **Real-time Water Usage Tracking**: Monitors queries to ChatGPT, Gemini, and other AI models
+-  **Personalized Dashboard**: Calculates your average usage based on an initial survey
+-  **Positive Reinforcement**: Shows how your water savings compare to children, animals, and communities in need
+-  **Interactive UI**: Draggable water bottle and usage square with smooth animations
+-  **Usage Analytics**: Track daily, weekly, and total water usage
+-  **Smart Notifications**: Get notified about your usage patterns
+-  **Cloud Sync**: Data synced to Supabase for collective impact tracking
 
 ## Installation
 
